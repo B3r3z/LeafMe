@@ -7,7 +7,7 @@ interface PlantDao {
     @androidx.room.Insert
     suspend fun insert(plant: com.example.leafme.data.Plant)
 
-    @androidx.room.Query("SELECT * FROM plants WHERE id = :plantId")
+    @androidx.room.Query("SELECT * FROM plants WHERE plantId = :plantId")
     suspend fun getPlantById(plantId: Int): com.example.leafme.data.Plant?
 
     @androidx.room.Query("SELECT * FROM plants WHERE userId = :userId")

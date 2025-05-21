@@ -11,6 +11,6 @@ interface MeasurementDao {
     suspend fun insert(measurement: Measurement)
     //@Query("SELECT * FROM measurements")
     //suspend fun getAllMeasurements(): List<Measurement>
-    @Query("SELECT * FROM measurements WHERE plantId = :plantId")
+    @Query("SELECT * FROM measurements WHERE plantId = :plantId ORDER BY timeStamp DESC")
     suspend fun getMeasurementsForPlantSorted(plantId: Int): List<Measurement>
 }
