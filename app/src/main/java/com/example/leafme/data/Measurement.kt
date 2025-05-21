@@ -8,7 +8,9 @@ import androidx.room.PrimaryKey
     foreignKeys = [ForeignKey(entity = Plant::class,
         parentColumns = ["plantId"],
         childColumns = ["plantId"],
-        onDelete = ForeignKey.CASCADE)])
+        onDelete = ForeignKey.CASCADE)],
+    indices = [androidx.room.Index("plantId")]
+)
 data class Measurement(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val plantId: Int,
