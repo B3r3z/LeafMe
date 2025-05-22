@@ -11,6 +11,9 @@ composeBom = "2024.09.00"
 room = "2.6.1"
 navigationRuntimeAndroid = "2.9.0"
 navigationComposeJvmstubs = "2.9.0" #
+retrofitVersion = "2.10.0"
+moshiVersion = "1.15.1"
+navigationCompose = "2.9.0" # Check for the latest version
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -32,6 +35,12 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-navigation-runtime-android = { group = "androidx.navigation", name = "navigation-runtime-android", version.ref = "navigationRuntimeAndroid" }
 androidx-navigation-compose-jvmstubs = { group = "androidx.navigation", name = "navigation-compose-jvmstubs", version.ref = "navigationComposeJvmstubs" }
+#Retrofit and Moshi dependencies
+retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofitVersion" }
+retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi",  version.ref = "retrofitVersion"  }
+moshi-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", version.ref = "moshiVersion"  }
+#navigation-compose
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

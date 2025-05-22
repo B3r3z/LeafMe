@@ -42,20 +42,26 @@ import java.util.Locale
 fun PlantListScreen(
     navController: NavController,
     repository: AppRepository,
-    userId: Int
+    userId: Int,
+    modifier: Modifier = Modifier // Dodano parametr modifier
 ) {
     var plants by remember { mutableStateOf<List<Plant>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    // TODO: Rozważ dodanie obsługi wylogowania użytkownika, np. przycisk w UI,
+    // który nawigowałby z powrotem do ekranu logowania.
+
+    LaunchedEffect(userId) { // Zmieniono z Unit na userId, aby ponownie ładować dane, jeśli userId się zmieni
+        // TODO: Upewnij się, że `userId` jest prawidłowy przed próbą pobrania danych.
+        // Jeśli `userId` może być np. -1 dla niezalogowanego użytkownika, dodaj odpowiednią obsługę.
         plants = repository.getPlantsByUserId(userId)
         isLoading = false
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier // Zastosowano przekazany modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp) // Ten padding jest wewnętrzny dla PlantListScreen, zachowaj go lub dostosuj
     ) {
         Text(
             text = "Plant Care App",
@@ -74,7 +80,11 @@ fun PlantListScreen(
                 Text("No plants added yet")
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
-                    onClick = { navController.navigate("addPlant") }
+                    onClick = {
+                        // TODO: Przed nawigacją do "addPlant", upewnij się, że użytkownik jest zalogowany
+                        // i przekaż odpowiednie dane (np. userId) do ekranu dodawania rośliny, jeśli to konieczne.
+                        navController.navigate("addPlant")
+                    }
                 ) {
                     Text("Add Your First Plant")
                 }
@@ -85,8 +95,8 @@ fun PlantListScreen(
                     PlantCard(
                         plant = plant,
                         repository = repository,
-                        onWaterNow = { /* TODO: Implement API call to water plant */ },
-                        onDelete = { /* TODO: Implement plant deletion */ },
+                        onWaterNow = { /* TODO: Implement API call to water plant, upewnij się, że użytkownik jest autoryzowany */ },
+                        onDelete = { /* TODO: Implement plant deletion, upewnij się, że użytkownik jest autoryzowany do usunięcia tej rośliny */ },
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
@@ -205,7 +215,8 @@ fun PlantListScreenPreview() {
         PlantListScreen(
             navController = rememberNavController(),
             repository = mockRepository,
-            userId = 1
+            userId = 1 // TOD O: W podglądzie używamy userId = 1. W rzeczywistej aplikacji
+            // ten ID będzie pochodził z zalogowanego użytkownika.
         )
     }
 }
