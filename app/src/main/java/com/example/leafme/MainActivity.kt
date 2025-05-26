@@ -4,12 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.leafme.ui.theme.LeafMeTheme
 
@@ -19,29 +14,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LeafMeTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                val repository = (application as LeafMeApplication).repository
+                // Na razie używamy userId = 1 jako placeholder.
+                // W przyszłości ten ID będzie pochodził z danych zalogowanego użytkownika.
+                val userId = 1
+                LeafMeApp(repository = repository, userId = userId)
             }
         }
     }
 }
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    LeafMeTheme {
-        Greeting("Android")
-    }
-}

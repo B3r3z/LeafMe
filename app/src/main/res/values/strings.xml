@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">LeafMe</string>
+    <string name="add_plant_screen_title">Add your plant\n</string>
+    <string name="back_button_description">Back\n</string>
+    <string name="plant_list_screen_title">List of your Plant\n</string>
+    <string name="add_plant_fab_description">add plant</string>
+    <string name="plant_name_label">What is its name?\n</string>
+    <string name="plant_name_error">The name is required</string>
 </resources>
