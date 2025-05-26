@@ -3,7 +3,10 @@ package com.example.leafme.data
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
-import androidx.room.Index // Import Index for indexing the userId column, KSP will generate the index for you
+import androidx.room.Index
+import androidx.room.ColumnInfo
+import com.squareup.moshi.Json
+
 @Entity(
     tableName = "plants",
     foreignKeys = [
@@ -17,7 +20,14 @@ import androidx.room.Index // Import Index for indexing the userId column, KSP w
     indices =[Index(value = ["userId"])]
 )
 data class Plant(
-    @PrimaryKey(autoGenerate = true) val plantId: Int = 0,
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "plantId") // Nazwa kolumny w bazie danych
+    @Json(name = "id") // Nazwa pola w JSON z serwera
+    val id: Int = 0,
+
     val name: String,
+
+    @ColumnInfo(name = "userId") // Nazwa kolumny w bazie danych
+    @Json(name = "user_id") // Nazwa pola w JSON z serwera
     val userId: Int // Ta kolumna będzie kluczem obcym
 )

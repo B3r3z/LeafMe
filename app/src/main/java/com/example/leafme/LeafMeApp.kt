@@ -25,7 +25,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.leafme.data.AppRepository
+import com.example.leafme.auth.AuthManager
+import com.example.leafme.database.AppRepository
 import com.example.leafme.screens.AddPlantScreen
 import com.example.leafme.screens.LoginRegisterScreen
 import com.example.leafme.screens.PlantListScreen
@@ -43,7 +44,8 @@ fun LeafMeApp(
     repository: AppRepository,
     navController: NavHostController = rememberNavController(),
     userId: Int, // Przekazujemy userId
-    startDestination: String
+    startDestination: String,
+    authManager: AuthManager // Dodaję parametr AuthManager
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentScreenName = backStackEntry?.destination?.route ?: LeafMeDestinations.PlantList.name
@@ -58,7 +60,7 @@ fun LeafMeApp(
             )
         },
         floatingActionButton = {
-            if (currentScreen == LeafMeDestinations.PlantList) { // Pokaż FAB tylko na liście roślin
+            if (currentScreen == LeafMeDestinations.PlantList && authManager.isLoggedIn()) { // Pokaż FAB tylko na liście roślin i gdy użytkownik jest zalogowany
                 FloatingActionButton(onClick = {
                     navController.navigate(LeafMeDestinations.AddPlant.name)
                 }) {
@@ -70,20 +72,28 @@ fun LeafMeApp(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = LeafMeDestinations.PlantList.name,
+            startDestination = startDestination, // Używamy przekazanego startDestination zamiast stałej wartości
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            composable(route = LeafMeDestinations.PlantList.name) {
+            composable(route = LeafMeDestinations.LoginRegister.name) {
                 LoginRegisterScreen(
                     navController = navController,
-                    onLoginSuccess = { userId ->
+                    onLoginSuccess = { _ ->
                         navController.navigate(LeafMeDestinations.PlantList.name) {
                             popUpTo(LeafMeDestinations.LoginRegister.name) { inclusive = true }
                         }
-                        // Przekaż userId do dalszych ekranów jeśli trzeba
-                    }
+                    },
+                    authManager = authManager
+                )
+            }
+            composable(route = LeafMeDestinations.PlantList.name) {
+                PlantListScreen(
+                    navController = navController,
+                    repository = repository,
+                    userId = userId,
+                    authManager = authManager
                 )
             }
             composable(route = LeafMeDestinations.AddPlant.name) {
@@ -91,7 +101,6 @@ fun LeafMeApp(
                     navController = navController,
                     repository = repository,
                     userId = userId
-                    // modifier = Modifier.padding(innerPadding)
                 )
             }
             // TODO: Dodaj composable dla innych ekranów, np. edycji rośliny
@@ -126,3 +135,4 @@ fun LeafMeTopAppBar(
         }
     )
 }
+

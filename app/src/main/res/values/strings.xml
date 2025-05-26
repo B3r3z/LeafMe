@@ -7,4 +7,5 @@
     <string name="plant_name_label">What is its name?\n</string>
     <string name="plant_name_error">The name is required</string>
     <string name="login_register_screen_title">Logowanie / Rejestracja</string>
+    <string name="save_plant_button">zapisz\n</string>
 </resources>

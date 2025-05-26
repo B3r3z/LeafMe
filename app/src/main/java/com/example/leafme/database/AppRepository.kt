@@ -1,10 +1,13 @@
-package com.example.leafme.data // Lub inna odpowiednia paczka, np. com.example.leafme.repository
+package com.example.leafme.database
 
-import com.example.leafme.database.UserDao
-import com.example.leafme.database.PlantDao
-import com.example.leafme.database.MeasurementDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Log
+import com.example.leafme.data.Measurement
+import com.example.leafme.data.Plant
+import com.example.leafme.data.User
+import com.example.leafme.retrofit.RetrofitClient
+import com.example.leafme.retrofit.CreatePlantRequest
 
 class AppRepository(
     private val userDao: UserDao,
@@ -25,22 +28,63 @@ class AppRepository(
         }
     }
 
-    // Przykładowe metody dla Plant
+    // Metody dla Plant
+    /**
+     * Dodaje roślinę do lokalnej bazy danych
+     * @param plant Roślina do dodania
+     */
     suspend fun insertPlant(plant: Plant) {
         withContext(Dispatchers.IO) {
             plantDao.insert(plant)
         }
     }
 
-    suspend fun getPlantById(plantId: Int): Plant? { // Zmieniono typ plantId na Int
+    /**
+     * Pobiera roślinę o podanym ID
+     * @param plantId ID rośliny
+     * @return Roślina lub null jeśli nie znaleziono
+     */
+    suspend fun getPlantById(plantId: Int): Plant? {
         return withContext(Dispatchers.IO) {
             plantDao.getPlantById(plantId)
         }
     }
 
-    suspend fun getPlantsByUserId(userId: Int): List<Plant> { // Zmieniono typ userId na Int
+    suspend fun getPlantsByUserId(userId: Int): List<Plant> {
         return withContext(Dispatchers.IO) {
             plantDao.getPlantsByUserId(userId)
+        }
+    }
+
+    /**
+     * Usuwa roślinę lokalnie i na serwerze
+     * @param plantId ID rośliny do usunięcia
+     * @return true jeśli usunięcie powiodło się, false w przeciwnym razie
+     */
+    suspend fun deletePlant(plantId: Int): Boolean {
+        return try {
+            // Najpierw próbujemy usunąć roślinę z serwera
+            val response = RetrofitClient.plantService.deletePlant(plantId)
+
+            // Niezależnie od odpowiedzi serwera, usuwamy roślinę lokalnie
+            withContext(Dispatchers.IO) {
+                plantDao.deletePlant(plantId)
+            }
+
+            // Zwracamy true jeśli serwer potwierdził usunięcie
+            response.isSuccessful
+        } catch (e: Exception) {
+            // W przypadku błędu sieciowego, usuwamy tylko lokalnie
+            Log.e("AppRepository", "Błąd podczas usuwania rośliny: ${e.message}")
+            withContext(Dispatchers.IO) {
+                try {
+                    plantDao.deletePlant(plantId)
+                    true // Usunięcie lokalne powiodło się
+                } catch (dbException: Exception) {
+                    Log.e("AppRepository", "Błąd podczas lokalnego usuwania rośliny: ${dbException.message}")
+                    false // Usunięcie lokalne nie powiodło się
+                }
+            }
         }
     }
 
@@ -51,11 +95,182 @@ class AppRepository(
         }
     }
 
+    /**
+     * Pobiera pomiary dla danej rośliny
+     * @param plantId ID rośliny
+     * @return Lista pomiarów posortowana po czasie
+     */
     suspend fun getMeasurementsForPlant(plantId: Int): List<Measurement> {
         return withContext(Dispatchers.IO) {
             measurementDao.getMeasurementsForPlantSorted(plantId)
         }
     }
 
-    //ToDo API implementacja
+    /**
+     * Pobiera listę roślin dla danego użytkownika
+     * @param userId ID użytkownika
+     * @return Lista roślin należących do użytkownika
+     */
+    suspend fun getPlantsForUser(userId: Int): List<Plant> {
+        return withContext(Dispatchers.IO) {
+            plantDao.getPlantsByUserId(userId)
+        }
+    }
+
+    /**
+     * Konwertuje roślinę z formatu API do formatu lokalnej bazy danych
+     */
+    private fun mapApiPlantToDbPlant(apiPlant: com.example.leafme.retrofit.Plant): Plant {
+        return Plant(
+            id = apiPlant.id,
+            name = apiPlant.name,
+            userId = apiPlant.userId ?: 0
+        )
+    }
+
+    /**
+     * Synchronizuje rośliny z serwerem
+     * @param userId ID użytkownika, którego rośliny mają zostać zsynchronizowane
+     * @return Lista roślin po synchronizacji
+     */
+    suspend fun syncPlantsWithServer(userId: Int): List<Plant> {
+        return try {
+            // Pobierz rośliny z serwera
+            val response = RetrofitClient.plantService.getUserPlants()
+
+            if (response.isSuccessful) {
+                val serverPlants = response.body() ?: emptyList()
+
+                // Pobierz rośliny z lokalnej bazy danych
+                val localPlants = withContext(Dispatchers.IO) {
+                    plantDao.getPlantsByUserId(userId)
+                }
+
+                // Identyfikatory roślin na serwerze
+                val serverPlantIds = serverPlants.map { it.id }.toSet()
+
+                // Identyfikatory roślin lokalnie
+                val localPlantIds = localPlants.map { it.id }.toSet()
+
+                // Rośliny, które są na serwerze, ale nie ma ich lokalnie - dodaj lokalnie
+                val plantsToAddLocally = serverPlants.filter { it.id !in localPlantIds }
+
+                // Rośliny, które są lokalnie, ale nie ma ich na serwerze - dodaj na serwer
+                val plantsToAddToServer = localPlants.filter { it.id !in serverPlantIds }
+
+                // Dodaj rośliny do lokalnej bazy danych
+                withContext(Dispatchers.IO) {
+                    for (apiPlant in plantsToAddLocally) {
+                        try {
+                            // Konwertuj z formatu API do formatu bazy danych
+                            val dbPlant = mapApiPlantToDbPlant(apiPlant)
+                            plantDao.insert(dbPlant)
+                        } catch (e: Exception) {
+                            Log.e("AppRepository", "Błąd podczas dodawania rośliny lokalnie: ${e.message}")
+                        }
+                    }
+                }
+
+                // Dodaj rośliny na serwer
+                for (plant in plantsToAddToServer) {
+                    try {
+                        val createRequest = CreatePlantRequest(name = plant.name, plantId = plant.id)
+                        val createResponse = RetrofitClient.plantService.createPlant(createRequest)
+
+                        if (!createResponse.isSuccessful) {
+                            Log.e("AppRepository", "Błąd podczas dodawania rośliny na serwer: ${createResponse.errorBody()?.string()}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AppRepository", "Wyjątek podczas dodawania rośliny na serwer: ${e.message}")
+                    }
+                }
+
+                // Zwróć zaktualizowaną listę roślin
+                withContext(Dispatchers.IO) {
+                    plantDao.getPlantsByUserId(userId)
+                }
+            } else {
+                // W przypadku błędu, zwróć tylko lokalne rośliny
+                Log.e("AppRepository", "Błąd podczas pobierania roślin z serwera: ${response.errorBody()?.string()}")
+                withContext(Dispatchers.IO) {
+                    plantDao.getPlantsByUserId(userId)
+                }
+            }
+        } catch (e: Exception) {
+            // W przypadku wyjątku, zwróć tylko lokalne rośliny
+            Log.e("AppRepository", "Wyjątek podczas synchronizacji roślin: ${e.message}")
+            withContext(Dispatchers.IO) {
+                plantDao.getPlantsByUserId(userId)
+            }
+        }
+    }
+
+    /**
+     * Konwertuje pomiar z formatu API do formatu lokalnej bazy danych
+     */
+    private fun mapApiMeasurementToDbMeasurement(apiMeasurement: com.example.leafme.retrofit.Measurement, plantId: Int): Measurement {
+        return Measurement(
+            id = 0, // Lokalny ID zostanie wygenerowany przez Room
+            plantId = plantId,
+            timeStamp = apiMeasurement.ts.toInt(),
+            moisture = apiMeasurement.moisture,
+            temperature = apiMeasurement.temperature
+        )
+    }
+
+    /**
+     * Synchronizuje pomiary dla danej rośliny z serwerem
+     * @param plantId ID rośliny, której pomiary mają zostać zsynchronizowane
+     * @return Lista pomiarów po synchronizacji
+     */
+    suspend fun syncMeasurementsWithServer(plantId: Int): List<Measurement> {
+        return try {
+            // Pobierz pomiary z serwera
+            val response = RetrofitClient.plantService.getMeasurements(plantId)
+
+            if (response.isSuccessful) {
+                val serverMeasurements = response.body()?.measurements ?: emptyList()
+
+                // Pobierz lokalne pomiary
+                val localMeasurements = withContext(Dispatchers.IO) {
+                    measurementDao.getMeasurementsForPlantSorted(plantId)
+                }
+
+                // Lokalne timestampy
+                val localTimestamps = localMeasurements.map { it.timeStamp }.toSet()
+
+                // Dodaj tylko te pomiary, których nie ma lokalnie
+                withContext(Dispatchers.IO) {
+                    for (apiMeasurement in serverMeasurements) {
+                        if (apiMeasurement.ts.toInt() !in localTimestamps) {
+                            try {
+                                val dbMeasurement = mapApiMeasurementToDbMeasurement(apiMeasurement, plantId)
+                                measurementDao.insert(dbMeasurement)
+                            } catch (e: Exception) {
+                                Log.e("AppRepository", "Błąd podczas dodawania pomiaru: ${e.message}")
+                            }
+                        }
+                    }
+                }
+
+                // Zwróć zaktualizowaną listę pomiarów
+                withContext(Dispatchers.IO) {
+                    measurementDao.getMeasurementsForPlantSorted(plantId)
+                }
+            } else {
+                // W przypadku błędu, zwróć tylko lokalne pomiary
+                Log.e("AppRepository", "Błąd podczas pobierania pomiarów z serwera: ${response.errorBody()?.string()}")
+                withContext(Dispatchers.IO) {
+                    measurementDao.getMeasurementsForPlantSorted(plantId)
+                }
+            }
+        } catch (e: Exception) {
+            // W przypadku wyjątku, zwróć tylko lokalne pomiary
+            Log.e("AppRepository", "Wyjątek podczas synchronizacji pomiarów: ${e.message}")
+            withContext(Dispatchers.IO) {
+                measurementDao.getMeasurementsForPlantSorted(plantId)
+            }
+        }
+    }
 }
+

@@ -21,8 +21,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.R
-import com.example.leafme.data.AppRepository
+import com.example.leafme.database.AppRepository
 import com.example.leafme.domain.AddPlantUseCase
+import kotlinx.coroutines.launch
 
 @Composable
 fun AddPlantScreen(
@@ -33,7 +34,7 @@ fun AddPlantScreen(
 ) {
     var plantName by remember { mutableStateOf("") }
     var isNameError by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
     val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository)) }
 
     Column(
@@ -65,9 +66,6 @@ fun AddPlantScreen(
                     )
                 }
             },
-            //TODO: POLE Z plantD, ID TRZEBA ZAPISAC DO BAZY, NIE MOZE BYC RANDOMOWE,
-            // bo potem nie bedzie mozna PODPIAC POD SERWER
-            // OGARNAC, ZEBY LADNIE SIE ZAPISYWALO I WYSWIETLALO
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
@@ -75,14 +73,20 @@ fun AddPlantScreen(
         )
         Button(onClick = {
             if (plantName.isNotBlank()) {
+                // Dodanie rośliny i synchronizacja z serwerem
                 viewModel.addPlant(plantName, userId) {
-                    navController.popBackStack()
+                    // Po dodaniu rośliny, synchronizujemy dane z serwerem
+                    coroutineScope.launch {
+                        repository.syncPlantsWithServer(userId)
+                        navController.popBackStack()
+                    }
                 }
             } else {
                 isNameError = true
             }
         }) {
-            Text("Save Plant (Placeholder)")
+            Text(stringResource(R.string.save_plant_button))
         }
     }
 }
+

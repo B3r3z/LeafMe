@@ -17,11 +17,9 @@ import com.example.leafme.auth.AuthManager
 fun LoginRegisterScreen(
     navController: NavController,
     onLoginSuccess: (userId: Int) -> Unit,
+    authManager: AuthManager,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
-
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoginMode by remember { mutableStateOf(true) }
@@ -79,7 +77,9 @@ fun LoginRegisterScreen(
                         val (success, msg) = authManager.login(email, password)
                         isLoading = false
                         if (success) {
-                            onLoginSuccess(1) // TODO: pobierz prawdziwy userId
+                            // Pobierz faktyczne ID użytkownika
+                            val userId = authManager.getUserId()
+                            onLoginSuccess(userId)
                         } else {
                             message = msg
                         }
@@ -111,3 +111,4 @@ fun LoginRegisterScreen(
         }
     }
 }
+

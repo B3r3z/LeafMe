@@ -1,15 +1,22 @@
 package com.example.leafme.database
 
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import com.example.leafme.data.Plant
 
 @Dao
 interface PlantDao {
-    @androidx.room.Insert
-    suspend fun insert(plant: com.example.leafme.data.Plant)
+    @Insert
+    suspend fun insert(plant: Plant)
 
-    @androidx.room.Query("SELECT * FROM plants WHERE plantId = :plantId")
-    suspend fun getPlantById(plantId: Int): com.example.leafme.data.Plant?
+    @Query("SELECT * FROM plants WHERE plantId = :plantId")
+    suspend fun getPlantById(plantId: Int): Plant?
 
-    @androidx.room.Query("SELECT * FROM plants WHERE userId = :userId")
-    suspend fun getPlantsByUserId(userId: Int): List<com.example.leafme.data.Plant>
+    @Query("SELECT * FROM plants WHERE userId = :userId")
+    suspend fun getPlantsByUserId(userId: Int): List<Plant>
+
+    @Query("DELETE FROM plants WHERE plantId = :plantId")
+    suspend fun deletePlant(plantId: Int)
 }
+

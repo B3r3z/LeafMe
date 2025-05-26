@@ -10,8 +10,13 @@ import kotlinx.coroutines.launch
 class AddPlantViewModel(private val addPlantUseCase: AddPlantUseCase) : ViewModel() {
     fun addPlant(name: String, userId: Int, onSuccess: () -> Unit) {
         viewModelScope.launch {
-            addPlantUseCase(name, userId)
-            onSuccess()
+            try {
+                addPlantUseCase(name, userId)
+                onSuccess()
+            } catch (e: Exception) {
+                // Można dodać obsługę błędów, np. aktualizację stanu UI z informacją o błędzie
+            }
         }
     }
 }
+

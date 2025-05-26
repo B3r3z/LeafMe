@@ -1,7 +1,7 @@
 package com.example.leafme
 
 import android.app.Application
-import com.example.leafme.data.AppRepository
+import com.example.leafme.database.AppRepository
 import com.example.leafme.database.AppDatabase
 
 class LeafMeApplication : Application() {
