@@ -1,5 +1,5 @@
 [versions]
-agp = "8.9.2"
+agp = "8.9.3"
 kotlin = "2.0.21"
 coreKtx = "1.16.0"
 junit = "4.13.2"
@@ -7,13 +7,12 @@ junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.9.0"
 activityCompose = "1.10.1"
-composeBom = "2024.09.00"
-room = "2.6.1"
-navigationRuntimeAndroid = "2.9.0"
-navigationComposeJvmstubs = "2.9.0" #
-retrofitVersion = "2.10.0"
-moshiVersion = "1.15.1"
-navigationCompose = "2.9.0" # Check for the latest version
+composeBom = "2025.05.01"
+# Ujednolicone wersje dla Moshi
+moshi = "1.15.1"
+retrofit = "2.10.0"
+room = "2.7.1"
+navigation = "2.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -30,21 +29,25 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+
+# Moshi i Retrofit
+moshi = { module = "com.squareup.moshi:moshi", version.ref = "moshi" }
+moshi-kotlin = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "moshi" }
+moshi-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", version.ref = "moshi" }
+retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
+retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "retrofit" }
+
+# Room
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
-androidx-navigation-runtime-android = { group = "androidx.navigation", name = "navigation-runtime-android", version.ref = "navigationRuntimeAndroid" }
-androidx-navigation-compose-jvmstubs = { group = "androidx.navigation", name = "navigation-compose-jvmstubs", version.ref = "navigationComposeJvmstubs" }
-#Retrofit and Moshi dependencies
-retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofitVersion" }
-retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi",  version.ref = "retrofitVersion"  }
-moshi-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", version.ref = "moshiVersion"  }
-#navigation-compose
-androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+
+# Navigation
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+androidx-navigation-runtime-android = { group = "androidx.navigation", name = "navigation-runtime-android", version.ref = "navigation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-ksp = "com.google.devtools.ksp:2.0.21-1.0.26" # Check for the latest version
-
+ksp = { id = "com.google.devtools.ksp", version = "2.0.21-1.0.26" }
