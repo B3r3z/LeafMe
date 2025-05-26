@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.R
 import com.example.leafme.data.AppRepository
+import com.example.leafme.domain.AddPlantUseCase
 
 @Composable
 fun AddPlantScreen(
@@ -33,6 +34,7 @@ fun AddPlantScreen(
     var plantName by remember { mutableStateOf("") }
     var isNameError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository)) }
 
     Column(
         modifier = modifier
@@ -72,8 +74,13 @@ fun AddPlantScreen(
                 .padding(bottom = 16.dp)
         )
         Button(onClick = {
-            // Logika zapisu (np. repository.addPlant(...))
-            navController.popBackStack() // Wróć do poprzedniego ekranu
+            if (plantName.isNotBlank()) {
+                viewModel.addPlant(plantName, userId) {
+                    navController.popBackStack()
+                }
+            } else {
+                isNameError = true
+            }
         }) {
             Text("Save Plant (Placeholder)")
         }
