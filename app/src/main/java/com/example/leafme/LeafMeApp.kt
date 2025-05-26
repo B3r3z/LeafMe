@@ -27,12 +27,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.leafme.data.AppRepository
 import com.example.leafme.screens.AddPlantScreen
+import com.example.leafme.screens.LoginRegisterScreen
 import com.example.leafme.screens.PlantListScreen
 
 enum class LeafMeDestinations(@StringRes val title: Int) {
     PlantList(title = R.string.plant_list_screen_title),
-    AddPlant(title = R.string.add_plant_screen_title)
+    AddPlant(title = R.string.add_plant_screen_title),
     // TODO: Dodaj inne ekrany, np. EditPlant, PlantDetails
+    LoginRegister(title = R.string.login_register_screen_title)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,7 +42,8 @@ enum class LeafMeDestinations(@StringRes val title: Int) {
 fun LeafMeApp(
     repository: AppRepository,
     navController: NavHostController = rememberNavController(),
-    userId: Int // Przekazujemy userId
+    userId: Int, // Przekazujemy userId
+    startDestination: String
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentScreenName = backStackEntry?.destination?.route ?: LeafMeDestinations.PlantList.name
@@ -73,11 +76,14 @@ fun LeafMeApp(
                 .padding(innerPadding)
         ) {
             composable(route = LeafMeDestinations.PlantList.name) {
-                PlantListScreen(
+                LoginRegisterScreen(
                     navController = navController,
-                    repository = repository,
-                    userId = userId
-                    // modifier = Modifier.padding(innerPadding) // Modifier jest już stosowany przez NavHost
+                    onLoginSuccess = { userId ->
+                        navController.navigate(LeafMeDestinations.PlantList.name) {
+                            popUpTo(LeafMeDestinations.LoginRegister.name) { inclusive = true }
+                        }
+                        // Przekaż userId do dalszych ekranów jeśli trzeba
+                    }
                 )
             }
             composable(route = LeafMeDestinations.AddPlant.name) {

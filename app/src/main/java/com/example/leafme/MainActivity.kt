@@ -5,7 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.leafme.auth.AuthManager
 import com.example.leafme.ui.theme.LeafMeTheme
 
 class MainActivity : ComponentActivity() {
@@ -18,7 +20,15 @@ class MainActivity : ComponentActivity() {
                 // Na razie używamy userId = 1 jako placeholder.
                 // W przyszłości ten ID będzie pochodził z danych zalogowanego użytkownika.
                 val userId = 1
-                LeafMeApp(repository = repository, userId = userId)
+                val context = this
+                val authManager = remember { AuthManager(context) }
+                authManager.initializeToken()
+                val startDestination = if (authManager.isLoggedIn()) {
+                    LeafMeDestinations.PlantList.name
+                } else {
+                    LeafMeDestinations.LoginRegister.name
+                }
+                LeafMeApp(repository = repository, userId = userId, startDestination = startDestination)
             }
         }
     }
