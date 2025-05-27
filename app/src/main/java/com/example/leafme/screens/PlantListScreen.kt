@@ -117,6 +117,8 @@ fun PlantListScreen(
     }
 }
 
+// app/src/main/java/com/example/leafme/screens/PlantListScreen.kt
+
 @Composable
 fun PlantCard(
     plant: Plant,
@@ -129,11 +131,11 @@ fun PlantCard(
 
     // Pobierz pomiary przy pierwszym renderowaniu i kiedy zmienia się roślina
     LaunchedEffect(plant) {
-        // Synchronizuj pomiary z serwerem zamiast tylko pobierać lokalne
         measurements = repository.syncMeasurementsWithServer(plant.id)
     }
 
-    val lastWatering = measurements.firstOrNull()?.let {
+    val lastMeasurement = measurements.firstOrNull()
+    val lastWatering = lastMeasurement?.let {
         SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
             .format(Date(it.timeStamp.toLong() * 1000))
     } ?: "Nigdy"
@@ -169,17 +171,12 @@ fun PlantCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // Wskaźniki wilgotności i temperatury
-                measurements.firstOrNull()?.let { lastMeasurement ->
-                    Column {
-                        Text("Wilgotność: %.1f%%".format(lastMeasurement.moisture))
-                        Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
-                    }
-                }
+            // Nowe: wyświetlanie wilgotności i temperatury
+            if (lastMeasurement != null) {
+                Text("Wilgotność gleby: %.1f%%".format(lastMeasurement.moisture))
+                Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
+            } else {
+                Text("Brak danych o wilgotności i temperaturze")
             }
         }
     }
