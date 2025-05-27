@@ -100,7 +100,9 @@ data class CreatePlantRequest(
     @Json(name = "name")
     val name: String,
     @Json(name = "plant_id")
-    val plantId: Int? = null
+    val plantId: Int? = null,
+    @Json(name = "user_id")
+    val userId: Int? = null
 )
 
 @JsonClass(generateAdapter = true)

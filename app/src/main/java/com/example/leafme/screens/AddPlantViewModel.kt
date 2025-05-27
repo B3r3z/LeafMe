@@ -8,13 +8,13 @@ import com.example.leafme.domain.AddPlantUseCase
 import kotlinx.coroutines.launch
 
 class AddPlantViewModel(private val addPlantUseCase: AddPlantUseCase) : ViewModel() {
-    fun addPlant(name: String, userId: Int, onSuccess: () -> Unit) {
+    fun addPlant(name: String, userId: Int, plantId: Int? = null, onSuccess: () -> Unit) {
         viewModelScope.launch {
             try {
-                addPlantUseCase(name, userId)
+                addPlantUseCase(name, userId, plantId)
                 onSuccess()
             } catch (e: Exception) {
-                // Można dodać obsługę błędów, np. aktualizację stanu UI z informacją o błędzie
+                // Obsługa błędów
             }
         }
     }
