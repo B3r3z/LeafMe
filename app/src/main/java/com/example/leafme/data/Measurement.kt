@@ -5,12 +5,16 @@ import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 import com.squareup.moshi.Json
 
-@Entity(tableName = "measurements",
+@Entity(
+    tableName = "measurements",
     foreignKeys = [ForeignKey(entity = Plant::class,
         parentColumns = ["plantId"],
         childColumns = ["plantId"],
         onDelete = ForeignKey.CASCADE)],
-    indices = [androidx.room.Index("plantId")]
+    indices = [
+        androidx.room.Index("plantId"),
+        androidx.room.Index(value = ["plantId", "timeStamp"], unique = true) // <-- DODAJ TO
+    ]
 )
 data class Measurement(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,

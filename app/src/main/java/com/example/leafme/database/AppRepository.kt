@@ -50,6 +50,9 @@ class AppRepository(
         }
     }
 
+
+
+
     suspend fun getPlantsByUserId(userId: Int): List<Plant> {
         return withContext(Dispatchers.IO) {
             plantDao.getPlantsByUserId(userId)
@@ -315,7 +318,7 @@ class AppRepository(
         }
     }
 
-    // w pliku `app/src/main/java/com/example/leafme/database/AppRepository.kt`
+
     suspend fun waterPlant(plantId: Int): Boolean {
         return try {
             val response = RetrofitClient.plantService.waterPlant(plantId, com.example.leafme.retrofit.WaterRequest())
@@ -324,6 +327,4 @@ class AppRepository(
             false
         }
     }
-
 }
-
