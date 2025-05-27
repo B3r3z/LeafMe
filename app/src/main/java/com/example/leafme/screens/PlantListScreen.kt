@@ -37,6 +37,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 
 @Composable
 fun PlantListScreen(
@@ -55,6 +59,10 @@ fun PlantListScreen(
         coroutineScope.launch {
             isRefreshing = true
             plants = repository.syncPlantsWithServer(userId)
+            // Dodaj to:
+            plants.forEach { plant ->
+                repository.syncMeasurementsWithServer(plant.id)
+            }
             isRefreshing = false
         }
     }
@@ -124,6 +132,9 @@ fun PlantListScreen(
 
 // app/src/main/java/com/example/leafme/screens/PlantListScreen.kt
 
+// Dodaj importy:
+
+
 @Composable
 fun PlantCard(
     plant: Plant,
@@ -133,25 +144,26 @@ fun PlantCard(
 ) {
     var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
+    var isWatering by remember { mutableStateOf(false) }
+    var waterMsg by remember { mutableStateOf<String?>(null) }
 
-    // Pobierz pomiary przy pierwszym renderowaniu i kiedy zmienia się roślina
     LaunchedEffect(plant) {
         measurements = repository.syncMeasurementsWithServer(plant.id)
     }
 
     val lastMeasurement = measurements.firstOrNull()
     val lastWatering = lastMeasurement?.let {
-        SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-            .format(Date(it.timeStamp.toLong() * 1000))
+        java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(it.timeStamp.toLong() * 1000))
     } ?: "Nigdy"
 
-    Card(
+    androidx.compose.material3.Card(
         modifier = modifier.fillMaxWidth()
     ) {
-        Column(
+        androidx.compose.foundation.layout.Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            Row(
+            androidx.compose.foundation.layout.Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
@@ -176,12 +188,40 @@ fun PlantCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Nowe: wyświetlanie wilgotności i temperatury
             if (lastMeasurement != null) {
                 Text("Wilgotność gleby: %.1f%%".format(lastMeasurement.moisture))
                 Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
             } else {
                 Text("Brak danych o wilgotności i temperaturze")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Przycisk "Podlej teraz"
+            Button(
+                onClick = {
+                    isWatering = true
+                    waterMsg = null
+                    coroutineScope.launch {
+                        val success = repository.waterPlant(plant.id)
+                        isWatering = false
+                        waterMsg = if (success) "Podlano!" else "Błąd podlewania"
+                    }
+                },
+                enabled = !isWatering
+            ) {
+                if (isWatering) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp).padding(end = 8.dp), strokeWidth = 2.dp)
+                }
+                Text("Podlej teraz")
+            }
+
+            if (waterMsg != null) {
+                Text(
+                    text = waterMsg!!,
+                    color = if (waterMsg == "Podlano!") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
     }

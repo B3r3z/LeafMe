@@ -243,9 +243,12 @@ class AppRepository(
     /**
      * Konwertuje pomiar z formatu API do formatu lokalnej bazy danych
      */
-    private fun mapApiMeasurementToDbMeasurement(apiMeasurement: com.example.leafme.retrofit.Measurement, plantId: Int): Measurement {
+    private fun mapApiMeasurementToDbMeasurement(
+        apiMeasurement: com.example.leafme.retrofit.Measurement,
+        plantId: Int
+    ): Measurement {
         return Measurement(
-            id = 0, // Lokalny ID zostanie wygenerowany przez Room
+            id = 0, // Room wygeneruje ID
             plantId = plantId,
             timeStamp = apiMeasurement.ts.toInt(),
             moisture = apiMeasurement.moisture,
@@ -259,36 +262,29 @@ class AppRepository(
      * @return Lista pomiarów po synchronizacji
      */
     suspend fun syncMeasurementsWithServer(plantId: Int): List<Measurement> {
+        Log.d("AppRepository", "Wywołano syncMeasurementsWithServer dla plantId=$plantId")
         return try {
-            // Pobierz pomiary z serwera
             val response = RetrofitClient.plantService.getMeasurements(plantId)
+            Log.d("AppRepository", "Odpowiedź serwera (getMeasurements): ${response.isSuccessful}, kod: ${response.code()}")
 
             if (response.isSuccessful) {
-                val serverMeasurements = response.body()?.measurements ?: emptyList()
-
-                //USUNĄĆ
+                val serverMeasurements = response.body() ?: emptyList()
                 Log.d("AppRepository", "Pobrano z serwera pomiarów: ${serverMeasurements.size}")
-                //USUNĄĆ^
 
-                // Pobierz lokalne pomiary
                 val localMeasurements = withContext(Dispatchers.IO) {
                     measurementDao.getMeasurementsForPlantSorted(plantId)
                 }
-
-                //USUNĄĆ
                 Log.d("AppRepository", "Liczba pomiarów w bazie lokalnej: ${localMeasurements.size}")
-                //USUNĄĆ^
 
-                // Lokalne timestampy
                 val localTimestamps = localMeasurements.map { it.timeStamp }.toSet()
 
-                // Dodaj tylko te pomiary, których nie ma lokalnie
                 withContext(Dispatchers.IO) {
                     for (apiMeasurement in serverMeasurements) {
                         if (apiMeasurement.ts.toInt() !in localTimestamps) {
                             try {
                                 val dbMeasurement = mapApiMeasurementToDbMeasurement(apiMeasurement, plantId)
                                 measurementDao.insert(dbMeasurement)
+                                Log.d("AppRepository", "Dodano pomiar: ts=${apiMeasurement.ts}, moisture=${apiMeasurement.moisture}, temp=${apiMeasurement.temperature}")
                             } catch (e: Exception) {
                                 Log.e("AppRepository", "Błąd podczas dodawania pomiaru: ${e.message}")
                             }
@@ -296,24 +292,38 @@ class AppRepository(
                     }
                 }
 
-                // Zwróć zaktualizowaną listę pomiarów
-                withContext(Dispatchers.IO) {
+                val updatedMeasurements = withContext(Dispatchers.IO) {
                     measurementDao.getMeasurementsForPlantSorted(plantId)
                 }
+                Log.d("AppRepository", "Liczba pomiarów po synchronizacji: ${updatedMeasurements.size}")
+                updatedMeasurements
             } else {
-                // W przypadku błędu, zwróć tylko lokalne pomiary
                 Log.e("AppRepository", "Błąd podczas pobierania pomiarów z serwera: ${response.errorBody()?.string()}")
-                withContext(Dispatchers.IO) {
+                val localMeasurements = withContext(Dispatchers.IO) {
                     measurementDao.getMeasurementsForPlantSorted(plantId)
                 }
+                Log.d("AppRepository", "Liczba pomiarów w bazie lokalnej (błąd serwera): ${localMeasurements.size}")
+                localMeasurements
             }
         } catch (e: Exception) {
-            // W przypadku wyjątku, zwróć tylko lokalne pomiary
             Log.e("AppRepository", "Wyjątek podczas synchronizacji pomiarów: ${e.message}")
-            withContext(Dispatchers.IO) {
+            val localMeasurements = withContext(Dispatchers.IO) {
                 measurementDao.getMeasurementsForPlantSorted(plantId)
             }
+            Log.d("AppRepository", "Liczba pomiarów w bazie lokalnej (wyjątek): ${localMeasurements.size}")
+            localMeasurements
         }
     }
+
+    // w pliku `app/src/main/java/com/example/leafme/database/AppRepository.kt`
+    suspend fun waterPlant(plantId: Int): Boolean {
+        return try {
+            val response = RetrofitClient.plantService.waterPlant(plantId, com.example.leafme.retrofit.WaterRequest())
+            response.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
+
 }
 

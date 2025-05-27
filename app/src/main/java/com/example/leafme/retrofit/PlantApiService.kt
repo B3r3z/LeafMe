@@ -25,7 +25,7 @@ interface PlantApiService {
 
     // Pobieranie pomiarów dla konkretnej rośliny
     @GET("/api/measurements/{plantId}")
-    suspend fun getMeasurements(@Path("plantId") plantId: Int): Response<MeasurementsResponse>
+    suspend fun getMeasurements(@Path("plantId") plantId: Int): Response<List<Measurement>>
 
     // Podlewanie rośliny
     @POST("/api/plants/{plantId}/water")
