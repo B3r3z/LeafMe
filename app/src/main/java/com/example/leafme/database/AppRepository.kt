@@ -266,10 +266,18 @@ class AppRepository(
             if (response.isSuccessful) {
                 val serverMeasurements = response.body()?.measurements ?: emptyList()
 
+                //USUNĄĆ
+                Log.d("AppRepository", "Pobrano z serwera pomiarów: ${serverMeasurements.size}")
+                //USUNĄĆ^
+
                 // Pobierz lokalne pomiary
                 val localMeasurements = withContext(Dispatchers.IO) {
                     measurementDao.getMeasurementsForPlantSorted(plantId)
                 }
+
+                //USUNĄĆ
+                Log.d("AppRepository", "Liczba pomiarów w bazie lokalnej: ${localMeasurements.size}")
+                //USUNĄĆ^
 
                 // Lokalne timestampy
                 val localTimestamps = localMeasurements.map { it.timeStamp }.toSet()

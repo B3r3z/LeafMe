@@ -44,6 +44,9 @@ android {
 }
 
 dependencies {
+
+    implementation("com.google.accompanist:accompanist-swiperefresh:0.33.2-alpha")
+
     // AndroidX i Compose
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

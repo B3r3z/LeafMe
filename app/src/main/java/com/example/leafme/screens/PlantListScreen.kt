@@ -31,6 +31,8 @@ import com.example.leafme.data.Measurement
 import com.example.leafme.data.Plant
 import com.example.leafme.auth.AuthManager
 import com.example.leafme.LeafMeDestinations
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,72 +47,75 @@ fun PlantListScreen(
     modifier: Modifier = Modifier
 ) {
     var plants by remember { mutableStateOf<List<Plant>>(emptyList()) }
+    var isRefreshing by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Funkcja do odświeżania listy roślin
     fun refreshPlants() {
         coroutineScope.launch {
+            isRefreshing = true
             plants = repository.syncPlantsWithServer(userId)
+            isRefreshing = false
         }
     }
 
-    // Pobierz listę roślin przy uruchomieniu ekranu
     LaunchedEffect(userId) {
         if (userId > 0) {
-            // Zamiast tylko pobierać lokalne rośliny, synchronizujemy je z serwerem
             plants = repository.syncPlantsWithServer(userId)
         }
         isLoading = false
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    SwipeRefresh(
+        state = rememberSwipeRefreshState(isRefreshing),
+        onRefresh = { refreshPlants() },
+        modifier = modifier.fillMaxSize()
     ) {
-        // Przycisk wylogowania
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Button(onClick = {
-                authManager.logout()
-                navController.navigate(LeafMeDestinations.LoginRegister.name) {
-                    popUpTo(0) { inclusive = true }
-                }
-            }) {
-                Text("Wyloguj się")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Reszta zawartości ekranu
-        if (isLoading) {
-            Text("Wczytywanie roślin...")
-        } else if (plants.isEmpty()) {
-            Text("Nie masz jeszcze żadnych roślin. Dodaj swoją pierwszą roślinę!")
-        } else {
-            // Lista roślin
-            LazyColumn {
-                items(plants) { plant ->
-                    PlantCard(
-                        plant = plant,
-                        repository = repository,
-                        onDelete = {
-                            coroutineScope.launch {
-                                // Usunięcie rośliny
-                                val success = repository.deletePlant(plant.id)
-                                if (success) {
-                                    // Odśwież całą listę po usunięciu zamiast tylko lokalnego filtrowania
-                                    refreshPlants()
-                                }
-                            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = {
+                        authManager.logout()
+                        navController.navigate(LeafMeDestinations.LoginRegister.name) {
+                            popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
                         }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    }
+                ) {
+                    Text("Wyloguj się")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (isLoading) {
+                Text("Ładowanie roślin...")
+            } else if (plants.isEmpty()) {
+                Text("Brak roślin. Dodaj pierwszą roślinę!")
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(plants) { plant ->
+                        PlantCard(
+                            plant = plant,
+                            repository = repository,
+                            onDelete = {
+                                coroutineScope.launch {
+                                    repository.deletePlant(plant.id)
+                                    plants = repository.syncPlantsWithServer(userId)
+                                }
+                            },
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                    }
                 }
             }
         }
