@@ -36,6 +36,10 @@ fun AddPlantScreen(
     var isNameError by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository)) }
+    var plantIdText by remember { mutableStateOf("") }
+    var isPlantIdError by remember { mutableStateOf(false) }
+
+    //Przy dodawaniu kwiatka dodaj jeszcze OPCJONALNE pole do nadania plantID.
 
     Column(
         modifier = modifier
@@ -71,11 +75,23 @@ fun AddPlantScreen(
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
         )
+        OutlinedTextField(
+            value = plantIdText,
+            onValueChange = { newValue ->
+                plantIdText = newValue
+                isPlantIdError = false
+            },
+            label = { Text("ID rośliny (opcjonalnie)") },
+            isError = isPlantIdError,
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        )
         Button(onClick = {
             if (plantName.isNotBlank()) {
-                // Dodanie rośliny i synchronizacja z serwerem
-                viewModel.addPlant(plantName, userId) {
-                    // Po dodaniu rośliny, synchronizujemy dane z serwerem
+                val plantId = plantIdText.toIntOrNull()
+                viewModel.addPlant(plantName, userId, plantId) {
                     coroutineScope.launch {
                         repository.syncPlantsWithServer(userId)
                         navController.popBackStack()
