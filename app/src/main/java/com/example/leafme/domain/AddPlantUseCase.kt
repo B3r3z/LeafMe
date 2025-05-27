@@ -1,6 +1,6 @@
 package com.example.leafme.domain
 
-// app/src/main/java/com/example/leafme/domain/AddPlantUseCase.kt
+
 
 import com.example.leafme.database.AppRepository
 import com.example.leafme.data.Plant
