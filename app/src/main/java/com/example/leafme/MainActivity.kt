@@ -20,7 +20,8 @@ class MainActivity : ComponentActivity() {
             LeafMeTheme {
                 val repository = (application as LeafMeApplication).repository
                 val context = this
-                val authManager = remember { AuthManager(context) }
+                // Przekazujemy repozytorium do AuthManager, aby mógł zapisywać użytkownika w lokalnej bazie danych
+                val authManager = remember { AuthManager(context, repository) }
                 val coroutineScope = rememberCoroutineScope()
 
                 // Inicjalizacja tokenu przy starcie
@@ -31,6 +32,11 @@ class MainActivity : ComponentActivity() {
 
                 // Jeśli użytkownik jest zalogowany, ale nie mamy jego ID, pobieramy je
                 if (authManager.isLoggedIn() && userId == 0) {
+                    coroutineScope.launch {
+                        authManager.refreshUserInfo()
+                    }
+                } else if (authManager.isLoggedIn() && userId > 0) {
+                    // Jeśli użytkownik jest zalogowany, upewnijmy się, że mamy go w lokalnej bazie danych
                     coroutineScope.launch {
                         authManager.refreshUserInfo()
                     }
