@@ -2,6 +2,7 @@ package com.example.leafme.screens
 
 // app/src/main/java/com/example/leafme/screens/AddPlantViewModel.kt
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.leafme.domain.AddPlantUseCase

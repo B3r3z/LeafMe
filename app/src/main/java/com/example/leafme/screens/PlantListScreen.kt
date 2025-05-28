@@ -53,23 +53,46 @@ fun PlantListScreen(
     var plants by remember { mutableStateOf<List<Plant>>(emptyList()) }
     var isRefreshing by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
+    //var measurementsMap by remember { mutableStateOf<Map<Int, List<Measurement>>>(emptyMap()) }
     val coroutineScope = rememberCoroutineScope()
+    // W PlantListScreen.kt
+    var plantMeasurements by remember { mutableStateOf<Map<Int, List<Measurement>>>(emptyMap()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
 
     fun refreshPlants() {
+        isRefreshing = true
+        errorMessage = null
         coroutineScope.launch {
-            isRefreshing = true
-            plants = repository.syncPlantsWithServer(userId)
-            // Dodaj to:
-            plants.forEach { plant ->
-                repository.syncMeasurementsWithServer(plant.id)
+            try {
+                val syncedPlants = repository.syncPlantsWithServer(userId)
+                plants = syncedPlants
+                // Synchronizuj pomiary dla każdej rośliny
+                val newMeasurementsMap = mutableMapOf<Int, List<Measurement>>()
+                for (plant in syncedPlants) {
+                    val measurements = repository.syncMeasurementsWithServer(plant.id)
+                    newMeasurementsMap[plant.id] = measurements
+                }
+                // KLUCZOWA ZMIANA:
+                plantMeasurements = newMeasurementsMap
+            } catch (e: Exception) {
+                errorMessage = "Błąd podczas synchronizacji: ${e.message}"
+            } finally {
+                isRefreshing = false
+                isLoading = false
             }
-            isRefreshing = false
         }
     }
+
 
     LaunchedEffect(userId) {
         if (userId > 0) {
             plants = repository.syncPlantsWithServer(userId)
+            val measurementsMap = mutableMapOf<Int, List<Measurement>>()
+            plants.forEach { plant ->
+                measurementsMap[plant.id] = repository.syncMeasurementsWithServer(plant.id)
+            }
+            plantMeasurements = measurementsMap
         }
         isLoading = false
     }
@@ -77,7 +100,7 @@ fun PlantListScreen(
     SwipeRefresh(
         state = rememberSwipeRefreshState(isRefreshing),
         onRefresh = { refreshPlants() },
-        modifier = modifier.fillMaxSize()
+        //modifier = modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier
@@ -114,11 +137,12 @@ fun PlantListScreen(
                     items(plants) { plant ->
                         PlantCard(
                             plant = plant,
+                            measurements = plantMeasurements[plant.id] ?: emptyList(),
                             repository = repository,
                             onDelete = {
                                 coroutineScope.launch {
                                     repository.deletePlant(plant.id)
-                                    plants = repository.syncPlantsWithServer(userId)
+                                    refreshPlants()
                                 }
                             },
                             modifier = Modifier.padding(bottom = 16.dp)
@@ -138,19 +162,20 @@ fun PlantListScreen(
 @Composable
 fun PlantCard(
     plant: Plant,
+    measurements: List<Measurement>,
     repository: AppRepository,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
+    //var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
     var isWatering by remember { mutableStateOf(false) }
     var waterMsg by remember { mutableStateOf<String?>(null) }
-
+/*
     LaunchedEffect(plant) {
         measurements = repository.syncMeasurementsWithServer(plant.id)
     }
-
+*/
     val lastMeasurement = measurements.firstOrNull()
     val lastWatering = lastMeasurement?.let {
         java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault())
