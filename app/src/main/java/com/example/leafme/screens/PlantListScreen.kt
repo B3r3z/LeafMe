@@ -1,5 +1,6 @@
 package com.example.leafme.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -145,8 +146,12 @@ fun PlantListScreen(
                                     refreshPlants()
                                 }
                             },
+                            onClick = {
+                                navController.navigate(LeafMeDestinations.PlantDetails.name + "/${plant.id}")
+                            },
                             modifier = Modifier.padding(bottom = 16.dp)
                         )
+
                     }
                 }
             }
@@ -165,6 +170,7 @@ fun PlantCard(
     measurements: List<Measurement>,
     repository: AppRepository,
     onDelete: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     //var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
@@ -184,6 +190,7 @@ fun PlantCard(
 
     androidx.compose.material3.Card(
         modifier = modifier.fillMaxWidth()
+            .clickable { onClick() }
     ) {
         androidx.compose.foundation.layout.Column(
             modifier = Modifier.padding(16.dp)

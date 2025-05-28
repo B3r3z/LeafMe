@@ -29,13 +29,20 @@ import com.example.leafme.auth.AuthManager
 import com.example.leafme.database.AppRepository
 import com.example.leafme.screens.AddPlantScreen
 import com.example.leafme.screens.LoginRegisterScreen
+import com.example.leafme.screens.PlantDetailsScreen
 import com.example.leafme.screens.PlantListScreen
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import androidx.navigation.compose.composable
+
 
 enum class LeafMeDestinations(@StringRes val title: Int) {
     PlantList(title = R.string.plant_list_screen_title),
     AddPlant(title = R.string.add_plant_screen_title),
     // TODO: Dodaj inne ekrany, np. EditPlant, PlantDetails
-    LoginRegister(title = R.string.login_register_screen_title)
+    LoginRegister(title = R.string.login_register_screen_title),
+    PlantDetails(title = R.string.plant_details_screen_title)
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +110,18 @@ fun LeafMeApp(
                     userId = userId
                 )
             }
+            composable(
+                route = LeafMeDestinations.PlantDetails.name + "/{plantId}",
+                arguments = listOf(navArgument("plantId") { type = NavType.IntType })
+            ) { backStackEntry ->
+                val plantId = backStackEntry.arguments?.getInt("plantId") ?: 0
+                PlantDetailsScreen(
+                    plantId = plantId,
+                    repository = repository,
+                    navController = navController
+                )
+            }
+
             // TODO: Dodaj composable dla innych ekranów, np. edycji rośliny
             // composable(route = LeafMeDestinations.EditPlant.name + "/{plantId}") { ... }
         }
