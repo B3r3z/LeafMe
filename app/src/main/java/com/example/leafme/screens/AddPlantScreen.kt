@@ -99,6 +99,10 @@ fun AddPlantScreen(
                 Log.d("AddPlantScreen", "Dodawanie rośliny: $plantName, userId: $userId")
 
                 val plantId = plantIdText.toIntOrNull()
+                if (plantIdText.isNotBlank() && plantId == null) {
+                    isPlantIdError = true
+                    return@Button
+                }
                 coroutineScope.launch {
                     try {
                         // Dodaj roślinę lokalnie i na serwerze
