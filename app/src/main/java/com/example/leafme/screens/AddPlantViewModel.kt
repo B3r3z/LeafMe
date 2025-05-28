@@ -14,7 +14,7 @@ class AddPlantViewModel(private val addPlantUseCase: AddPlantUseCase) : ViewMode
                 addPlantUseCase(name, userId, plantId)
                 onSuccess()
             } catch (e: Exception) {
-                // Obsługa błędów
+                Log.e("AddPlantViewModel", "Error adding plant", e)
             }
         }
     }
