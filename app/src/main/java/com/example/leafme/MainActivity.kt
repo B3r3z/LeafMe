@@ -34,12 +34,12 @@ class MainActivity : ComponentActivity() {
                 if (authManager.isLoggedIn() && userId == 0) {
                     coroutineScope.launch {
                         authManager.refreshUserInfo()
-                    }
+                    }.join() // Ensure the coroutine completes before proceeding
                 } else if (authManager.isLoggedIn() && userId > 0) {
                     // Jeśli użytkownik jest zalogowany, upewnijmy się, że mamy go w lokalnej bazie danych
                     coroutineScope.launch {
                         authManager.refreshUserInfo()
-                    }
+                    }.join() // Ensure the coroutine completes before proceeding
                 }
 
                 val startDestination = if (authManager.isLoggedIn()) {
