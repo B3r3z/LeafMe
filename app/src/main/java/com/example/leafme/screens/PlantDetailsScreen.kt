@@ -134,7 +134,7 @@ fun PlantDetailsScreen(
                 else "Temperatura (wszystkie pomiary):"
             )
             LineChart(
-                data = chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
+                data = chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp),

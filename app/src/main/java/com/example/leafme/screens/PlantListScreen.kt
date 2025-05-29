@@ -2,6 +2,7 @@ package com.example.leafme.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -101,62 +102,69 @@ fun PlantListScreen(
     SwipeRefresh(
         state = rememberSwipeRefreshState(isRefreshing),
         onRefresh = { refreshPlants() },
-        //modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .padding(16.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Button(
-                    onClick = {
-                        authManager.logout()
-                        navController.navigate(LeafMeDestinations.LoginRegister.name) {
-                            popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = {
+                            authManager.logout()
+                            navController.navigate(LeafMeDestinations.LoginRegister.name) {
+                                popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
+                            }
                         }
+                    ) {
+                        Text("Wyloguj się")
                     }
-                ) {
-                    Text("Wyloguj się")
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            if (isLoading) {
-                Text("Ładowanie roślin...")
-            } else if (plants.isEmpty()) {
-                Text("Brak roślin. Dodaj pierwszą roślinę!")
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(plants) { plant ->
-                        PlantCard(
-                            plant = plant,
-                            measurements = plantMeasurements[plant.id] ?: emptyList(),
-                            repository = repository,
-                            onDelete = {
-                                coroutineScope.launch {
-                                    repository.deletePlant(plant.id)
-                                    refreshPlants()
-                                }
-                            },
-                            onClick = {
-                                navController.navigate(LeafMeDestinations.PlantDetails.name + "/${plant.id}")
-                            },
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
+                if (isLoading) {
+                    Text("Ładowanie roślin...")
+                } else if (plants.isEmpty()) {
+                    Text("Brak roślin. Dodaj pierwszą roślinę!")
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(plants) { plant ->
+                            PlantCard(
+                                plant = plant,
+                                measurements = plantMeasurements[plant.id] ?: emptyList(),
+                                repository = repository,
+                                onDelete = {
+                                    coroutineScope.launch {
+                                        repository.deletePlant(plant.id)
+                                        refreshPlants()
+                                    }
+                                },
+                                onClick = {
+                                    navController.navigate(LeafMeDestinations.PlantDetails.name + "/${plant.id}")
+                                },
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
 
+                        }
                     }
                 }
             }
         }
-    }
+        }
 }
 
 // app/src/main/java/com/example/leafme/screens/PlantListScreen.kt
