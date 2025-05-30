@@ -21,8 +21,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.R
-import com.example.leafme.data.AppRepository
+import com.example.leafme.database.AppRepository
 import com.example.leafme.domain.AddPlantUseCase
+import kotlinx.coroutines.launch
+import android.util.Log
 
 @Composable
 fun AddPlantScreen(
@@ -33,8 +35,11 @@ fun AddPlantScreen(
 ) {
     var plantName by remember { mutableStateOf("") }
     var isNameError by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
     val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository)) }
+    var plantIdText by remember { mutableStateOf("") }
+    var isPlantIdError by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -65,24 +70,75 @@ fun AddPlantScreen(
                     )
                 }
             },
-            //TODO: POLE Z plantD, ID TRZEBA ZAPISAC DO BAZY, NIE MOZE BYC RANDOMOWE,
-            // bo potem nie bedzie mozna PODPIAC POD SERWER
-            // OGARNAC, ZEBY LADNIE SIE ZAPISYWALO I WYSWIETLALO
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
         )
-        Button(onClick = {
-            if (plantName.isNotBlank()) {
-                viewModel.addPlant(plantName, userId) {
-                    navController.popBackStack()
+        OutlinedTextField(
+            value = plantIdText,
+            onValueChange = { newValue ->
+                plantIdText = newValue
+                isPlantIdError = false
+            },
+            label = { Text("ID rośliny (opcjonalnie)") },
+            isError = isPlantIdError,
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        )
+        Button(
+            onClick = {
+                if (plantName.isBlank()) {
+                    isNameError = true
+                    return@Button
                 }
-            } else {
-                isNameError = true
-            }
-        }) {
-            Text("Save Plant (Placeholder)")
+
+                isLoading = true
+                Log.d("AddPlantScreen", "Dodawanie rośliny: $plantName, userId: $userId")
+
+                val plantId = plantIdText.toIntOrNull()
+                if (plantIdText.isNotBlank() && plantId == null) {
+                    isPlantIdError = true
+                    return@Button
+                }
+                coroutineScope.launch {
+                    try {
+                        // Dodaj roślinę lokalnie i na serwerze
+                        viewModel.addPlant(plantName, userId, plantId) {
+                            // To jest callback po sukcesie
+                            coroutineScope.launch {
+                                try {
+                                    // Synchronizuj z serwerem
+                                    Log.d("AddPlantScreen", "Rozpoczynam synchronizację roślin")
+                                    val plants = repository.syncPlantsWithServer(userId)
+                                    Log.d("AddPlantScreen", "Synchronizacja zakończona, liczba roślin: ${plants.size}")
+
+                                    // Powrót do poprzedniego ekranu
+                                    navController.popBackStack()
+                                } catch (e: Exception) {
+                                    Log.e("AddPlantScreen", "Błąd podczas synchronizacji: ${e.message}", e)
+                                    isLoading = false
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AddPlantScreen", "Błąd podczas dodawania rośliny: ${e.message}", e)
+                        isLoading = false
+                    }
+                }
+            },
+            enabled = !isLoading
+        ) {
+            Text(stringResource(R.string.save_plant_button))
+        }
+
+        if (isLoading) {
+            Text(
+                text = "Dodawanie rośliny...",
+                modifier = Modifier.padding(top = 16.dp)
+            )
         }
     }
 }

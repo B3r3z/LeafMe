@@ -1,6 +1,8 @@
 package com.example.leafme.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,125 +14,196 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
-import com.example.leafme.data.AppRepository
+import com.example.leafme.database.AppRepository
 import com.example.leafme.data.Measurement
 import com.example.leafme.data.Plant
-import com.example.leafme.database.MeasurementDao
-import com.example.leafme.database.PlantDao
-import com.example.leafme.database.UserDao
+import com.example.leafme.auth.AuthManager
+import com.example.leafme.LeafMeDestinations
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 
 @Composable
 fun PlantListScreen(
     navController: NavController,
     repository: AppRepository,
     userId: Int,
-    modifier: Modifier = Modifier // Dodano parametr modifier
+    authManager: AuthManager,
+    modifier: Modifier = Modifier
 ) {
     var plants by remember { mutableStateOf<List<Plant>>(emptyList()) }
+    var isRefreshing by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
+    //var measurementsMap by remember { mutableStateOf<Map<Int, List<Measurement>>>(emptyMap()) }
+    val coroutineScope = rememberCoroutineScope()
+    // W PlantListScreen.kt
+    var plantMeasurements by remember { mutableStateOf<Map<Int, List<Measurement>>>(emptyMap()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // TODO: Rozważ dodanie obsługi wylogowania użytkownika, np. przycisk w UI,
-    // który nawigowałby z powrotem do ekranu logowania.
 
-    LaunchedEffect(userId) { // Zmieniono z Unit na userId, aby ponownie ładować dane, jeśli userId się zmieni
-        // TODO: Upewnij się, że `userId` jest prawidłowy przed próbą pobrania danych.
-        // Jeśli `userId` może być np. -1 dla niezalogowanego użytkownika, dodaj odpowiednią obsługę.
-        plants = repository.getPlantsByUserId(userId)
-        isLoading = false
-    }
-
-    Column(
-        modifier = modifier // Zastosowano przekazany modifier
-            .fillMaxSize()
-            .padding(16.dp) // Ten padding jest wewnętrzny dla PlantListScreen, zachowaj go lub dostosuj
-    ) {
-        Text(
-            text = "Plant Care App",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        if (isLoading) {
-            Text("Loading plants...")
-        } else if (plants.isEmpty()) {
-            Column(
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Text("No plants added yet")
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        // TODO: Przed nawigacją do "addPlant", upewnij się, że użytkownik jest zalogowany
-                        // i przekaż odpowiednie dane (np. userId) do ekranu dodawania rośliny, jeśli to konieczne.
-                        navController.navigate("addPlant")
-                    }
-                ) {
-                    Text("Add Your First Plant")
+    fun refreshPlants() {
+        isRefreshing = true
+        errorMessage = null
+        coroutineScope.launch {
+            try {
+                val syncedPlants = repository.syncPlantsWithServer(userId)
+                plants = syncedPlants
+                // Synchronizuj pomiary dla każdej rośliny
+                val newMeasurementsMap = mutableMapOf<Int, List<Measurement>>()
+                for (plant in syncedPlants) {
+                    val measurements = repository.syncMeasurementsWithServer(plant.id)
+                    newMeasurementsMap[plant.id] = measurements
                 }
-            }
-        } else {
-            LazyColumn {
-                items(plants) { plant ->
-                    PlantCard(
-                        plant = plant,
-                        repository = repository,
-                        onWaterNow = { /* TODO: Implement API call to water plant, upewnij się, że użytkownik jest autoryzowany */ },
-                        onDelete = { /* TODO: Implement plant deletion, upewnij się, że użytkownik jest autoryzowany do usunięcia tej rośliny */ },
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
+                // KLUCZOWA ZMIANA:
+                plantMeasurements = newMeasurementsMap
+            } catch (e: Exception) {
+                errorMessage = "Błąd podczas synchronizacji: ${e.message}"
+            } finally {
+                isRefreshing = false
+                isLoading = false
             }
         }
     }
+
+
+    LaunchedEffect(userId) {
+        if (userId > 0) {
+            plants = repository.syncPlantsWithServer(userId)
+            val measurementsMap = mutableMapOf<Int, List<Measurement>>()
+            plants.forEach { plant ->
+                measurementsMap[plant.id] = repository.syncMeasurementsWithServer(plant.id)
+            }
+            plantMeasurements = measurementsMap
+        }
+        isLoading = false
+    }
+
+    SwipeRefresh(
+        state = rememberSwipeRefreshState(isRefreshing),
+        onRefresh = { refreshPlants() },
+        modifier = modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .padding(16.dp)
+        ) {
+
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = {
+                            authManager.logout()
+                            navController.navigate(LeafMeDestinations.LoginRegister.name) {
+                                popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
+                            }
+                        }
+                    ) {
+                        Text("Wyloguj się")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (isLoading) {
+                    Text("Ładowanie roślin...")
+                } else if (plants.isEmpty()) {
+                    Text("Brak roślin. Dodaj pierwszą roślinę!")
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(plants) { plant ->
+                            PlantCard(
+                                plant = plant,
+                                measurements = plantMeasurements[plant.id] ?: emptyList(),
+                                repository = repository,
+                                onDelete = {
+                                    coroutineScope.launch {
+                                        repository.deletePlant(plant.id)
+                                        refreshPlants()
+                                    }
+                                },
+                                onClick = {
+                                    navController.navigate(LeafMeDestinations.PlantDetails.name + "/${plant.id}")
+                                },
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
+
+                        }
+                    }
+                }
+            }
+        }
+        }
 }
+
+// app/src/main/java/com/example/leafme/screens/PlantListScreen.kt
+
+// Dodaj importy:
+
 
 @Composable
 fun PlantCard(
     plant: Plant,
+    measurements: List<Measurement>,
     repository: AppRepository,
-    onWaterNow: () -> Unit,
     onDelete: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
-
+    //var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
+    var isWatering by remember { mutableStateOf(false) }
+    var waterMsg by remember { mutableStateOf<String?>(null) }
+/*
     LaunchedEffect(plant) {
-        measurements = repository.getMeasurementsForPlant(plant.plantId)
+        measurements = repository.syncMeasurementsWithServer(plant.id)
     }
+*/
+    val lastMeasurement = measurements.firstOrNull()
+    val lastWatering = lastMeasurement?.let {
+        java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(it.timeStamp.toLong() * 1000))
+    } ?: "Nigdy"
 
-    val lastWatering = measurements.firstOrNull()?.let {
-        SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-            .format(Date(it.timeStamp.toLong() * 1000))
-    } ?: "Never"
-
-    Card(
+    androidx.compose.material3.Card(
         modifier = modifier.fillMaxWidth()
+            .clickable { onClick() }
     ) {
-        Column(
+        androidx.compose.foundation.layout.Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            Row(
+            androidx.compose.foundation.layout.Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
@@ -145,115 +218,52 @@ fun PlantCard(
                     onClick = onDelete,
                     modifier = Modifier.height(36.dp)
                 ) {
-                    Text("Delete")
+                    Text("Usuń")
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Last watered: $lastWatering")
+            Text("Ostatnie podlewanie: $lastWatering")
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // Moisture and temperature indicators
-                measurements.firstOrNull()?.let { lastMeasurement ->
-                    Column {
-                        Text("Moisture: %.1f%%".format(lastMeasurement.moisture))
-                        Text("Temperature: %.1f°C".format(lastMeasurement.temperature))
+            if (lastMeasurement != null) {
+                Text("Wilgotność gleby: %.1f%%".format(lastMeasurement.moisture))
+                Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
+            } else {
+                Text("Brak danych o wilgotności i temperaturze")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Przycisk "Podlej teraz"
+            Button(
+                onClick = {
+                    isWatering = true
+                    waterMsg = null
+                    coroutineScope.launch {
+                        val success = repository.waterPlant(plant.id)
+                        isWatering = false
+                        waterMsg = if (success) "Podlano!" else "Błąd podlewania"
                     }
+                },
+                enabled = !isWatering
+            ) {
+                if (isWatering) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp).padding(end = 8.dp), strokeWidth = 2.dp)
                 }
-
-                Button(onClick = onWaterNow) {
-                    Text("Water Now")
-                }
+                Text("Podlej teraz")
             }
-        }
-    }
-}
 
-
-@Preview(showBackground = true, device = "id:pixel_5")
-@Composable
-fun PlantListScreenPreview() {
-    MaterialTheme {
-        // Mock DAOs to pass to the mock repository
-        val mockUserDao = object : UserDao {
-            override suspend fun insert(user: com.example.leafme.data.User) {}
-            override suspend fun getUserById(userId: Int): com.example.leafme.data.User? = null
-        }
-        val mockPlantDao = object : PlantDao {
-            override suspend fun insert(plant: com.example.leafme.data.Plant) {}
-            override suspend fun getPlantById(plantId: Int): com.example.leafme.data.Plant? = null
-            override suspend fun getPlantsByUserId(userId: Int): List<com.example.leafme.data.Plant> {
-                return listOf(
-                    Plant(plantId = 1, name = "Mleczyk", userId = 1),
-                    Plant(plantId = 2, name = "Bazylia", userId = 1)
+            if (waterMsg != null) {
+                Text(
+                    text = waterMsg!!,
+                    color = if (waterMsg == "Podlano!") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
         }
-        val mockMeasurementDao = object : MeasurementDao {
-            override suspend fun insert(measurement: Measurement) {}
-            override suspend fun getMeasurementsForPlantSorted(plantId: Int): List<Measurement> {
-                return listOf(
-                    Measurement(
-                        plantId = plantId,
-                        timeStamp = (System.currentTimeMillis() / 1000).toInt(),
-                        moisture = 65.5f,
-                        temperature = 22.3f
-                    )
-                )
-            }
-        }
-
-        // Create an instance of AppRepository with mock DAOs
-        val mockRepository = AppRepository(mockUserDao, mockPlantDao, mockMeasurementDao)
-
-        PlantListScreen(
-            navController = rememberNavController(),
-            repository = mockRepository,
-            userId = 1 // TOD O: W podglądzie używamy userId = 1. W rzeczywistej aplikacji
-            // ten ID będzie pochodził z zalogowanego użytkownika.
-        )
     }
 }
 
-
-@Preview(showBackground = true)
-@Composable
-fun PlantCardPreview() {
-    MaterialTheme {
-        val mockPlant = Plant(plantId = 1, name = "Mleczyk", userId = 1)
-        val mockMeasurement = Measurement(
-            plantId = 1,
-            timeStamp = (System.currentTimeMillis() / 1000).toInt(),
-            moisture = 65.5f,
-            temperature = 22.3f
-        )
-
-        // Mock DAOs for PlantCardPreview
-        val mockUserDao = object : UserDao {
-            override suspend fun insert(user: com.example.leafme.data.User) {}
-            override suspend fun getUserById(userId: Int): com.example.leafme.data.User? = null
-        }
-        val mockPlantDao = object : PlantDao {
-            override suspend fun insert(plant: com.example.leafme.data.Plant) {}
-            override suspend fun getPlantById(plantId: Int): com.example.leafme.data.Plant? = null
-            override suspend fun getPlantsByUserId(userId: Int): List<com.example.leafme.data.Plant> = emptyList()
-        }
-        val mockMeasurementDao = object : MeasurementDao {
-            override suspend fun insert(measurement: Measurement) {}
-            override suspend fun getMeasurementsForPlantSorted(plantId: Int) = listOf(mockMeasurement)
-        }
-
-        PlantCard(
-            plant = mockPlant,
-            repository = AppRepository(mockUserDao, mockPlantDao, mockMeasurementDao),
-            onWaterNow = {},
-            onDelete = {}
-        )
-    }
-}

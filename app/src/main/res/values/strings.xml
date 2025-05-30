@@ -6,4 +6,7 @@
     <string name="add_plant_fab_description">add plant</string>
     <string name="plant_name_label">What is its name?\n</string>
     <string name="plant_name_error">The name is required</string>
+    <string name="login_register_screen_title">Logowanie / Rejestracja</string>
+    <string name="save_plant_button">zapisz\n</string>
+    <string name="plant_details_screen_title">Szczegóły rośliny</string>
 </resources>
