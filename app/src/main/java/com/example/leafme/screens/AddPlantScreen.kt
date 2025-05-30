@@ -101,6 +101,7 @@ fun AddPlantScreen(
                 val plantId = plantIdText.toIntOrNull()
                 if (plantIdText.isNotBlank() && plantId == null) {
                     isPlantIdError = true
+                    isLoading = false // Dodano resetowanie isLoading
                     return@Button
                 }
                 coroutineScope.launch {
@@ -119,7 +120,8 @@ fun AddPlantScreen(
                                     navController.popBackStack()
                                 } catch (e: Exception) {
                                     Log.e("AddPlantScreen", "Błąd podczas synchronizacji: ${e.message}", e)
-                                    isLoading = false
+                                } finally {
+                                    isLoading = false // Zapewnia zresetowanie isLoading
                                 }
                             }
                         }

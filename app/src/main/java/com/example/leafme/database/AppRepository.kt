@@ -91,6 +91,17 @@ class AppRepository(
         }
     }
 
+    /**
+     * Usuwa wszystkie rośliny z lokalnej bazy danych.
+     */
+    suspend fun clearAllLocalPlants() {
+        withContext(Dispatchers.IO) {
+            plantDao.clearAllPlants()
+            // Opcjonalnie można też wyczyścić pomiary, jeśli są przechowywane globalnie
+            // measurementDao.clearAllMeasurements() // Jeśli taka metoda istnieje
+        }
+    }
+
     // Przykładowe metody dla Measurement
     suspend fun insertMeasurement(measurement: Measurement) {
         withContext(Dispatchers.IO) {
@@ -328,3 +339,4 @@ class AppRepository(
         }
     }
 }
+

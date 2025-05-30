@@ -41,8 +41,6 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 
 @Composable
 fun PlantListScreen(
@@ -52,15 +50,12 @@ fun PlantListScreen(
     authManager: AuthManager,
     modifier: Modifier = Modifier
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var plants by remember { mutableStateOf<List<Plant>>(emptyList()) }
     var isRefreshing by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
-    //var measurementsMap by remember { mutableStateOf<Map<Int, List<Measurement>>>(emptyMap()) }
-    val coroutineScope = rememberCoroutineScope()
-    // W PlantListScreen.kt
     var plantMeasurements by remember { mutableStateOf<Map<Int, List<Measurement>>>(emptyMap()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-
 
     fun refreshPlants() {
         isRefreshing = true
@@ -69,13 +64,11 @@ fun PlantListScreen(
             try {
                 val syncedPlants = repository.syncPlantsWithServer(userId)
                 plants = syncedPlants
-                // Synchronizuj pomiary dla każdej rośliny
                 val newMeasurementsMap = mutableMapOf<Int, List<Measurement>>()
                 for (plant in syncedPlants) {
                     val measurements = repository.syncMeasurementsWithServer(plant.id)
                     newMeasurementsMap[plant.id] = measurements
                 }
-                // KLUCZOWA ZMIANA:
                 plantMeasurements = newMeasurementsMap
             } catch (e: Exception) {
                 errorMessage = "Błąd podczas synchronizacji: ${e.message}"
@@ -85,7 +78,6 @@ fun PlantListScreen(
             }
         }
     }
-
 
     LaunchedEffect(userId) {
         if (userId > 0) {
@@ -108,8 +100,6 @@ fun PlantListScreen(
             modifier = Modifier.fillMaxSize()
                 .padding(16.dp)
         ) {
-
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -122,9 +112,11 @@ fun PlantListScreen(
                 ) {
                     Button(
                         onClick = {
-                            authManager.logout()
-                            navController.navigate(LeafMeDestinations.LoginRegister.name) {
-                                popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
+                            coroutineScope.launch {
+                                authManager.logout()
+                                navController.navigate(LeafMeDestinations.LoginRegister.name) {
+                                    popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
+                                }
                             }
                         }
                     ) {
@@ -158,19 +150,13 @@ fun PlantListScreen(
                                 },
                                 modifier = Modifier.padding(bottom = 16.dp)
                             )
-
                         }
                     }
                 }
             }
         }
-        }
+    }
 }
-
-// app/src/main/java/com/example/leafme/screens/PlantListScreen.kt
-
-// Dodaj importy:
-
 
 @Composable
 fun PlantCard(
@@ -181,15 +167,10 @@ fun PlantCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    //var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
     var isWatering by remember { mutableStateOf(false) }
     var waterMsg by remember { mutableStateOf<String?>(null) }
-/*
-    LaunchedEffect(plant) {
-        measurements = repository.syncMeasurementsWithServer(plant.id)
-    }
-*/
+
     val lastMeasurement = measurements.firstOrNull()
     val lastWatering = lastMeasurement?.let {
         java.text.SimpleDateFormat("dd MMM, HH:mm", java.util.Locale.getDefault())
@@ -237,7 +218,6 @@ fun PlantCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Przycisk "Podlej teraz"
             Button(
                 onClick = {
                     isWatering = true
