@@ -105,7 +105,15 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
     /**
      * Wylogowuje użytkownika
      */
-    fun logout() {
+    suspend fun logout() { // Zmieniono na suspend fun
+        // Wyczyszczenie lokalnych danych specyficznych dla użytkownika
+        try {
+            repository?.clearAllLocalPlants()
+            Log.d(TAG, "Lokalne dane roślin zostały wyczyszczone.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Błąd podczas czyszczenia lokalnych danych roślin: ${e.message}", e)
+        }
+
         // Usuń token z SharedPreferences
         saveToken("")
         // Usuń ID użytkownika
@@ -114,6 +122,7 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
         saveUserEmail("")
         // Usuń token z klienta Retrofit
         RetrofitClient.setAuthToken("")
+        Log.d(TAG, "Użytkownik wylogowany.")
     }
 
     /**
