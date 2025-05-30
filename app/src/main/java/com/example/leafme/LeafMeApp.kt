@@ -107,7 +107,8 @@ fun LeafMeApp(
                 AddPlantScreen(
                     navController = navController,
                     repository = repository,
-                    userId = userId
+                    userId = userId,
+                    authManager = authManager // Przekaż authManager
                 )
             }
             composable(

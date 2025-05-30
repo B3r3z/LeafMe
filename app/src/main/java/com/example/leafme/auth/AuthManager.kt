@@ -7,6 +7,9 @@ import com.example.leafme.retrofit.LoginRequest
 import com.example.leafme.retrofit.RegisterRequest
 import com.example.leafme.retrofit.RetrofitClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import com.example.leafme.data.User
 import com.example.leafme.database.AppRepository
@@ -14,15 +17,22 @@ import com.example.leafme.database.AppRepository
 /**
  * Klasa do zarządzania autentykacją użytkownika
  */
-class AuthManager(context: Context, private val repository: AppRepository? = null) {
+class AuthManager(private val context: Context, private val repository: AppRepository? = null) {
     private val sharedPreferences: SharedPreferences =
         context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+
+    private val _isLoggedIn = MutableStateFlow(isTokenPresentInPrefs())
+    val isLoggedInState: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
     companion object {
         private const val KEY_TOKEN = "jwt_token"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "user_email"
         private const val TAG = "AuthManager"
+    }
+
+    private fun isTokenPresentInPrefs(): Boolean {
+        return sharedPreferences.getString(KEY_TOKEN, "")?.isNotEmpty() ?: false
     }
 
     /**
@@ -59,25 +69,17 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
             if (response.isSuccessful) {
                 val token = response.body()?.accessToken ?: return@withContext Pair(false, "Brak tokenu w odpowiedzi")
 
-                // Zapisz token w SharedPreferences
                 saveToken(token)
-
-                // Zapisz email użytkownika
                 saveUserEmail(email)
-
-                // Ustaw token w kliencie Retrofit
                 RetrofitClient.setAuthToken(token)
+                _isLoggedIn.value = true // Aktualizuj stan zalogowania
 
-                // Pobierz i zapisz ID użytkownika
                 val userId = fetchAndSaveUserId()
 
-                // Dodaj użytkownika do lokalnej bazy danych (jeśli repozytorium jest dostępne)
                 if (repository != null && userId > 0) {
                     try {
-                        // Sprawdź, czy użytkownik już istnieje
                         val existingUser = repository.getUserById(userId)
                         if (existingUser == null) {
-                            // Dodaj użytkownika do lokalnej bazy danych
                             Log.d(TAG, "Dodaję użytkownika do lokalnej bazy danych: id=$userId, email=$email")
                             val user = User(userId = userId, email = email, passwordHash = "")
                             repository.insertUser(user)
@@ -89,40 +91,38 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
                         Log.e(TAG, "Błąd podczas dodawania użytkownika do lokalnej bazy danych: ${e.message}", e)
                     }
                 }
-
                 return@withContext Pair(true, "Logowanie udane!")
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Nieznany błąd"
                 Log.e(TAG, "Błąd logowania: $errorMsg")
+                _isLoggedIn.value = false // Upewnij się, że stan jest false przy błędzie
                 return@withContext Pair(false, "Błąd logowania: $errorMsg")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Wyjątek podczas logowania", e)
+            _isLoggedIn.value = false // Upewnij się, że stan jest false przy błędzie
             return@withContext Pair(false, "Błąd sieci: ${e.message}")
         }
     }
 
     /**
-     * Wylogowuje użytkownika
+     * Wylogowuje użytkownika.
+     * Ta metoda nie jest już funkcją suspend.
+     * Czyszczenie danych lokalnych (np. roślin) powinno być obsługiwane osobno,
+     * np. przed wywołaniem tej metody przy jawnym wylogowaniu.
      */
-    suspend fun logout() { // Zmieniono na suspend fun
-        // Wyczyszczenie lokalnych danych specyficznych dla użytkownika
-        try {
-            repository?.clearAllLocalPlants()
-            Log.d(TAG, "Lokalne dane roślin zostały wyczyszczone.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Błąd podczas czyszczenia lokalnych danych roślin: ${e.message}", e)
-        }
-
+    fun logout() {
+        // Usuń token z klienta Retrofit
+        RetrofitClient.setAuthToken("")
         // Usuń token z SharedPreferences
         saveToken("")
         // Usuń ID użytkownika
         saveUserId(0)
         // Usuń email użytkownika
         saveUserEmail("")
-        // Usuń token z klienta Retrofit
-        RetrofitClient.setAuthToken("")
-        Log.d(TAG, "Użytkownik wylogowany.")
+        // Zaktualizuj stan zalogowania
+        _isLoggedIn.value = false
+        Log.d(TAG, "Użytkownik wylogowany. Stan isLoggedIn ustawiony na false.")
     }
 
     /**
@@ -154,20 +154,25 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
     }
 
     /**
-     * Sprawdza, czy użytkownik jest zalogowany
+     * Sprawdza, czy użytkownik jest zalogowany (na podstawie StateFlow).
      */
     fun isLoggedIn(): Boolean {
-        val token = getToken()
-        return token.isNotEmpty()
+        return _isLoggedIn.value
     }
 
     /**
      * Inicjalizuje token w kliencie Retrofit przy starcie aplikacji
+     * oraz aktualizuje stan _isLoggedIn.
      */
     fun initializeToken() {
         val token = getToken()
         if (token.isNotEmpty()) {
             RetrofitClient.setAuthToken(token)
+            _isLoggedIn.value = true
+            Log.d(TAG, "Token zainicjalizowany. Stan isLoggedIn ustawiony na true.")
+        } else {
+            _isLoggedIn.value = false
+            Log.d(TAG, "Brak tokenu przy inicjalizacji. Stan isLoggedIn ustawiony na false.")
         }
     }
 
@@ -185,10 +190,14 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
                 return@withContext userId
             } else {
                 Log.e(TAG, "Błąd podczas pobierania ID użytkownika: ${response.errorBody()?.string()}")
+                // Jeśli pobranie ID użytkownika nie powiedzie się (np. z powodu wygaśnięcia tokenu zaraz po logowaniu),
+                // powinniśmy to potraktować jako nieudane logowanie.
+                logout() // Wywołaj logout, aby wyczyścić stan i token
                 return@withContext 0
             }
         } catch (e: Exception) {
             Log.e(TAG, "Wyjątek podczas pobierania ID użytkownika", e)
+            logout() // Wywołaj logout, aby wyczyścić stan i token
             return@withContext 0
         }
     }
@@ -219,7 +228,6 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
                 val userId = response.body()?.id ?: 0
                 saveUserId(userId)
 
-                // Aktualizuj również wpis w lokalnej bazie danych, jeśli repozytorium jest dostępne
                 if (repository != null && userId > 0) {
                     val email = getUserEmail()
                     if (email.isNotEmpty()) {
@@ -235,12 +243,22 @@ class AuthManager(context: Context, private val repository: AppRepository? = nul
                         }
                     }
                 }
-
+                _isLoggedIn.value = true // Upewnij się, że stan jest aktualny
                 return@withContext true
+            } else {
+                // Jeśli odświeżenie informacji o użytkowniku nie powiedzie się z powodu tokenu
+                if (response.errorBody()?.string()?.contains("Token has expired") == true) {
+                    logout()
+                } else {
+                     _isLoggedIn.value = false // Jeśli inny błąd, ale nie możemy potwierdzić użytkownika
+                }
+                return@withContext false
             }
-            return@withContext false
         } catch (e: Exception) {
             Log.e(TAG, "Błąd podczas odświeżania informacji o użytkowniku", e)
+            // Rozważ wylogowanie, jeśli wyjątek oznacza problem z autentykacją
+            // logout()
+             _isLoggedIn.value = false // Jeśli wyjątek, nie możemy potwierdzić użytkownika
             return@withContext false
         }
     }

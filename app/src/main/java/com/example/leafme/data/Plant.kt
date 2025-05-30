@@ -20,10 +20,10 @@ import com.squareup.moshi.Json
     indices =[Index(value = ["userId"])]
 )
 data class Plant(
-    @PrimaryKey(autoGenerate = true)
+    @PrimaryKey // Usunięto autoGenerate = true
     @ColumnInfo(name = "plantId") // Nazwa kolumny w bazie danych
     @Json(name = "id") // Nazwa pola w JSON z serwera
-    val id: Int = 0,
+    val id: Int, // Usunięto domyślną wartość = 0
 
     val name: String,
 

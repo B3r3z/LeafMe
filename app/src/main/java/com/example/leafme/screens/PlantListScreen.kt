@@ -41,6 +41,8 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import com.example.leafme.util.TokenExpiredException
+import android.util.Log
 
 @Composable
 fun PlantListScreen(
@@ -70,7 +72,12 @@ fun PlantListScreen(
                     newMeasurementsMap[plant.id] = measurements
                 }
                 plantMeasurements = newMeasurementsMap
+            } catch (e: TokenExpiredException) {
+                Log.e("PlantListScreen", "Token wygasł podczas odświeżania.", e)
+                authManager.logout() // To zainicjuje globalne przekierowanie
+                errorMessage = "Sesja wygasła. Zaloguj się ponownie."
             } catch (e: Exception) {
+                Log.e("PlantListScreen", "Błąd podczas synchronizacji: ${e.message}", e)
                 errorMessage = "Błąd podczas synchronizacji: ${e.message}"
             } finally {
                 isRefreshing = false
@@ -81,12 +88,21 @@ fun PlantListScreen(
 
     LaunchedEffect(userId) {
         if (userId > 0) {
-            plants = repository.syncPlantsWithServer(userId)
-            val measurementsMap = mutableMapOf<Int, List<Measurement>>()
-            plants.forEach { plant ->
-                measurementsMap[plant.id] = repository.syncMeasurementsWithServer(plant.id)
+            try {
+                plants = repository.syncPlantsWithServer(userId)
+                val measurementsMap = mutableMapOf<Int, List<Measurement>>()
+                plants.forEach { plant ->
+                    measurementsMap[plant.id] = repository.syncMeasurementsWithServer(plant.id)
+                }
+                plantMeasurements = measurementsMap
+            } catch (e: TokenExpiredException) {
+                Log.e("PlantListScreen", "Token wygasł podczas LaunchedEffect.", e)
+                authManager.logout() // To zainicjuje globalne przekierowanie
+                errorMessage = "Sesja wygasła. Zaloguj się ponownie."
+            } catch (e: Exception) {
+                Log.e("PlantListScreen", "Błąd w LaunchedEffect: ${e.message}", e)
+                errorMessage = "Nie można załadować danych: ${e.message}"
             }
-            plantMeasurements = measurementsMap
         }
         isLoading = false
     }
@@ -113,9 +129,18 @@ fun PlantListScreen(
                     Button(
                         onClick = {
                             coroutineScope.launch {
-                                authManager.logout()
-                                navController.navigate(LeafMeDestinations.LoginRegister.name) {
-                                    popUpTo(LeafMeDestinations.PlantList.name) { inclusive = true }
+                                try {
+                                    // Najpierw wyczyść lokalne dane specyficzne dla użytkownika
+                                    repository.clearAllLocalPlants()
+                                    Log.d("PlantListScreen", "Lokalne dane roślin wyczyszczone przed wylogowaniem.")
+                                } catch (e: Exception) {
+                                    Log.e("PlantListScreen", "Błąd podczas czyszczenia lokalnych danych roślin: ${e.message}", e)
+                                    // Można tu wyświetlić komunikat o błędzie, ale wylogowanie i tak powinno nastąpić
+                                } finally {
+                                    // Następnie wykonaj operację wylogowania w AuthManager
+                                    authManager.logout() // To zmieni isLoggedInState, co powinno wywołać reaktywną nawigację
+                                    // Jawna nawigacja nie jest już potrzebna, ponieważ MainActivity
+                                    // reaguje na zmianę isLoggedInState.
                                 }
                             }
                         }
@@ -138,12 +163,39 @@ fun PlantListScreen(
                             PlantCard(
                                 plant = plant,
                                 measurements = plantMeasurements[plant.id] ?: emptyList(),
-                                repository = repository,
                                 onDelete = {
                                     coroutineScope.launch {
-                                        repository.deletePlant(plant.id)
-                                        refreshPlants()
+                                        try {
+                                            val deleted = repository.deletePlant(plant.id)
+                                            if (deleted) {
+                                                refreshPlants()
+                                            } else {
+                                                errorMessage = "Nie udało się usunąć rośliny."
+                                            }
+                                        } catch (e: TokenExpiredException) {
+                                            Log.e("PlantListScreen", "Token wygasł podczas usuwania rośliny.", e)
+                                            authManager.logout() // To zainicjuje globalne przekierowanie
+                                            errorMessage = "Sesja wygasła. Zaloguj się ponownie."
+                                        } catch (e: Exception) {
+                                            Log.e("PlantListScreen", "Błąd podczas usuwania rośliny: ${e.message}", e)
+                                            errorMessage = "Błąd usuwania: ${e.message}"
+                                        }
                                     }
+                                },
+                                onWaterPlant = {
+                                    var success = false
+                                    var error: String? = null
+                                    try {
+                                        success = repository.waterPlant(plant.id)
+                                    } catch (e: TokenExpiredException) {
+                                        Log.e("PlantListScreen", "Token wygasł podczas podlewania.", e)
+                                        authManager.logout() // To zainicjuje globalne przekierowanie
+                                        error = "Sesja wygasła. Zaloguj się ponownie."
+                                    } catch (e: Exception) {
+                                        Log.e("PlantListScreen", "Błąd podczas podlewania: ${e.message}", e)
+                                        error = "Błąd podlewania: ${e.message}"
+                                    }
+                                    Pair(success, error)
                                 },
                                 onClick = {
                                     navController.navigate(LeafMeDestinations.PlantDetails.name + "/${plant.id}")
@@ -162,9 +214,9 @@ fun PlantListScreen(
 fun PlantCard(
     plant: Plant,
     measurements: List<Measurement>,
-    repository: AppRepository,
     onDelete: () -> Unit,
     onClick: () -> Unit,
+    onWaterPlant: suspend () -> Pair<Boolean, String?>,
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -223,9 +275,13 @@ fun PlantCard(
                     isWatering = true
                     waterMsg = null
                     coroutineScope.launch {
-                        val success = repository.waterPlant(plant.id)
+                        val (success, error) = onWaterPlant()
                         isWatering = false
-                        waterMsg = if (success) "Podlano!" else "Błąd podlewania"
+                        if (success) {
+                            waterMsg = "Podlano!"
+                        } else {
+                            waterMsg = error ?: "Błąd podlewania"
+                        }
                     }
                 },
                 enabled = !isWatering
