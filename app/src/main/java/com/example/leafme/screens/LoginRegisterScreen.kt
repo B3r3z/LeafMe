@@ -2,35 +2,35 @@ package com.example.leafme.screens
 
 
 import kotlinx.coroutines.launch
-import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.auth.AuthManager
+import android.util.Log
 
 @Composable
 fun LoginRegisterScreen(
     navController: NavController,
-    onLoginSuccess: (userId: Int) -> Unit,
+    onLoginSuccess: () -> Unit,
     authManager: AuthManager,
     modifier: Modifier = Modifier
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoginMode by remember { mutableStateOf(true) }
-    var message by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
     fun clearFields() {
         email = ""
         password = ""
-        message = ""
+        message = null
     }
 
     Column(
@@ -64,29 +64,27 @@ fun LoginRegisterScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (message.isNotEmpty()) {
-            Text(message, color = MaterialTheme.colorScheme.error)
+        message?.let {
+            Text(it, color = if (it.startsWith("Błąd")) MaterialTheme.colorScheme.error else LocalContentColor.current)
             Spacer(modifier = Modifier.height(8.dp))
         }
 
         Button(
             onClick = {
                 isLoading = true
-                message = ""
+                message = null
                 coroutineScope.launch {
                     if (isLoginMode) {
-                        // Logowanie
-                        val (success, msg) = authManager.login(email, password)
+                        val (success, msg, loggedInUserId) = authManager.login(email, password)
                         isLoading = false
-                        if (success) {
-                            // Pobierz faktyczne ID użytkownika
-                            val userId = authManager.getUserId()
-                            onLoginSuccess(userId)
+                        if (success && loggedInUserId > 0) {
+                            Log.d("LoginRegisterScreen", "Logowanie udane, userId: $loggedInUserId")
+                            onLoginSuccess()
                         } else {
                             message = msg
+                            Log.e("LoginRegisterScreen", "Błąd logowania: $msg")
                         }
                     } else {
-                        // Rejestracja
                         val (success, msg) = authManager.register(email, password)
                         isLoading = false
                         message = msg

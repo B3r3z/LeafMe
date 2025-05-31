@@ -24,6 +24,9 @@ class AuthManager(private val context: Context, private val repository: AppRepos
     private val _isLoggedIn = MutableStateFlow(isTokenPresentInPrefs())
     val isLoggedInState: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
+    private val _currentUserId = MutableStateFlow(getUserIdFromPrefs())
+    val currentUserIdState: StateFlow<Int> = _currentUserId.asStateFlow()
+
     companion object {
         private const val KEY_TOKEN = "jwt_token"
         private const val KEY_USER_ID = "user_id"
@@ -33,6 +36,10 @@ class AuthManager(private val context: Context, private val repository: AppRepos
 
     private fun isTokenPresentInPrefs(): Boolean {
         return sharedPreferences.getString(KEY_TOKEN, "")?.isNotEmpty() ?: false
+    }
+
+    private fun getUserIdFromPrefs(): Int {
+        return sharedPreferences.getInt(KEY_USER_ID, 0)
     }
 
     /**
@@ -59,49 +66,52 @@ class AuthManager(private val context: Context, private val repository: AppRepos
 
     /**
      * Loguje użytkownika
-     * @return Para (sukces, wiadomość)
+     * @return Triple (sukces, wiadomość, userId)
      */
-    suspend fun login(email: String, password: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+    suspend fun login(email: String, password: String): Triple<Boolean, String, Int> = withContext(Dispatchers.IO) {
         try {
             val request = LoginRequest(email = email, password = password)
             val response = RetrofitClient.authService.login(request)
 
             if (response.isSuccessful) {
-                val token = response.body()?.accessToken ?: return@withContext Pair(false, "Brak tokenu w odpowiedzi")
+                val token = response.body()?.accessToken ?: return@withContext Triple(false, "Brak tokenu w odpowiedzi", 0)
 
                 saveToken(token)
                 saveUserEmail(email)
                 RetrofitClient.setAuthToken(token)
-                _isLoggedIn.value = true // Aktualizuj stan zalogowania
 
-                val userId = fetchAndSaveUserId()
+                val fetchedUserId = fetchAndSaveUserIdInternal()
 
-                if (repository != null && userId > 0) {
-                    try {
-                        val existingUser = repository.getUserById(userId)
-                        if (existingUser == null) {
-                            Log.d(TAG, "Dodaję użytkownika do lokalnej bazy danych: id=$userId, email=$email")
-                            val user = User(userId = userId, email = email, passwordHash = "")
-                            repository.insertUser(user)
-                            Log.d(TAG, "Użytkownik dodany do lokalnej bazy danych")
-                        } else {
-                            Log.d(TAG, "Użytkownik już istnieje w lokalnej bazie danych")
+                if (fetchedUserId > 0) {
+                    if (repository != null) {
+                        try {
+                            val existingUser = repository.getUserById(fetchedUserId)
+                            if (existingUser == null) {
+                                Log.d(TAG, "Dodaję użytkownika do lokalnej bazy danych: id=$fetchedUserId, email=$email")
+                                val user = User(userId = fetchedUserId, email = email, passwordHash = "")
+                                repository.insertUser(user)
+                                Log.d(TAG, "Użytkownik dodany do lokalnej bazy danych")
+                            } else {
+                                Log.d(TAG, "Użytkownik już istnieje w lokalnej bazie danych")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Błąd podczas dodawania użytkownika do lokalnej bazy danych: ${e.message}", e)
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Błąd podczas dodawania użytkownika do lokalnej bazy danych: ${e.message}", e)
                     }
+                    _isLoggedIn.value = true
+                    return@withContext Triple(true, "Logowanie udane!", fetchedUserId)
+                } else {
+                    logout() // Pełne wylogowanie, jeśli nie udało się pobrać ID
+                    return@withContext Triple(false, "Nie udało się pobrać ID użytkownika.", 0)
                 }
-                return@withContext Pair(true, "Logowanie udane!")
             } else {
                 val errorMsg = response.errorBody()?.string() ?: "Nieznany błąd"
-                Log.e(TAG, "Błąd logowania: $errorMsg")
-                _isLoggedIn.value = false // Upewnij się, że stan jest false przy błędzie
-                return@withContext Pair(false, "Błąd logowania: $errorMsg")
+                logout() // Pełne wylogowanie przy błędzie API logowania
+                return@withContext Triple(false, "Błąd logowania: $errorMsg", 0)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Wyjątek podczas logowania", e)
-            _isLoggedIn.value = false // Upewnij się, że stan jest false przy błędzie
-            return@withContext Pair(false, "Błąd sieci: ${e.message}")
+            logout() // Pełne wylogowanie przy wyjątku sieciowym itp.
+            return@withContext Triple(false, "Błąd sieci: ${e.message}", 0)
         }
     }
 
@@ -116,13 +126,13 @@ class AuthManager(private val context: Context, private val repository: AppRepos
         RetrofitClient.setAuthToken("")
         // Usuń token z SharedPreferences
         saveToken("")
-        // Usuń ID użytkownika
-        saveUserId(0)
         // Usuń email użytkownika
         saveUserEmail("")
+        // Zaktualizuj ID użytkownika
+        saveUserIdInternal(0) // Użyj metody wewnętrznej do aktualizacji SharedPreferences i StateFlow
         // Zaktualizuj stan zalogowania
         _isLoggedIn.value = false
-        Log.d(TAG, "Użytkownik wylogowany. Stan isLoggedIn ustawiony na false.")
+        Log.d(TAG, "Użytkownik wylogowany. Stany isLoggedIn i currentUserId zresetowane.")
     }
 
     /**
@@ -162,17 +172,18 @@ class AuthManager(private val context: Context, private val repository: AppRepos
 
     /**
      * Inicjalizuje token w kliencie Retrofit przy starcie aplikacji
-     * oraz aktualizuje stan _isLoggedIn.
+     * oraz aktualizuje stan _isLoggedIn i _currentUserId.
      */
     fun initializeToken() {
         val token = getToken()
         if (token.isNotEmpty()) {
             RetrofitClient.setAuthToken(token)
-            _isLoggedIn.value = true
-            Log.d(TAG, "Token zainicjalizowany. Stan isLoggedIn ustawiony na true.")
+            // _isLoggedIn i _currentUserId są już inicjalizowane z SharedPreferences
+            Log.d(TAG, "Token zainicjalizowany. isLoggedIn: ${_isLoggedIn.value}, currentUserId: ${_currentUserId.value}")
         } else {
             _isLoggedIn.value = false
-            Log.d(TAG, "Brak tokenu przy inicjalizacji. Stan isLoggedIn ustawiony na false.")
+            _currentUserId.value = 0
+            Log.d(TAG, "Brak tokenu przy inicjalizacji. Stany zresetowane.")
         }
     }
 
@@ -180,33 +191,36 @@ class AuthManager(private val context: Context, private val repository: AppRepos
      * Pobiera ID użytkownika z serwera i zapisuje je lokalnie
      * @return ID użytkownika lub 0 jeśli nie udało się pobrać
      */
-    private suspend fun fetchAndSaveUserId(): Int = withContext(Dispatchers.IO) {
+    private suspend fun fetchAndSaveUserIdInternal(): Int = withContext(Dispatchers.IO) {
         try {
             val response = RetrofitClient.userService.getUserInfo()
             if (response.isSuccessful) {
                 val userId = response.body()?.id ?: 0
-                saveUserId(userId)
-                Log.d(TAG, "Pobrano ID użytkownika: $userId")
-                return@withContext userId
+                if (userId > 0) {
+                    saveUserIdInternal(userId)
+                    return@withContext userId
+                } else {
+                    Log.e(TAG, "Serwer zwrócił nieprawidłowe ID użytkownika (0).")
+                    return@withContext 0
+                }
             } else {
-                Log.e(TAG, "Błąd podczas pobierania ID użytkownika: ${response.errorBody()?.string()}")
-                // Jeśli pobranie ID użytkownika nie powiedzie się (np. z powodu wygaśnięcia tokenu zaraz po logowaniu),
-                // powinniśmy to potraktować jako nieudane logowanie.
-                logout() // Wywołaj logout, aby wyczyścić stan i token
+                val errorBody = response.errorBody()?.string()
+                Log.e(TAG, "Błąd API podczas pobierania ID użytkownika: $errorBody")
                 return@withContext 0
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Wyjątek podczas pobierania ID użytkownika", e)
-            logout() // Wywołaj logout, aby wyczyścić stan i token
+            Log.e(TAG, "Wyjątek podczas pobierania ID użytkownika: ${e.message}", e)
             return@withContext 0
         }
     }
 
     /**
-     * Zapisuje ID użytkownika w SharedPreferences
+     * Zapisuje ID użytkownika w SharedPreferences i aktualizuje StateFlow
      */
-    private fun saveUserId(userId: Int) {
+    private fun saveUserIdInternal(userId: Int) {
         sharedPreferences.edit().putInt(KEY_USER_ID, userId).apply()
+        _currentUserId.value = userId
+        Log.d(TAG, "Zapisano userId: $userId do SharedPreferences i _currentUserId.")
     }
 
     /**
@@ -214,7 +228,7 @@ class AuthManager(private val context: Context, private val repository: AppRepos
      * @return ID użytkownika lub 0 jeśli nie jest zalogowany
      */
     fun getUserId(): Int {
-        return sharedPreferences.getInt(KEY_USER_ID, 0)
+        return _currentUserId.value // Lub sharedPreferences.getInt(KEY_USER_ID, 0)
     }
 
     /**
@@ -222,43 +236,31 @@ class AuthManager(private val context: Context, private val repository: AppRepos
      * Używaj tej metody, gdy potrzebujesz ponownie pobrać dane użytkownika
      */
     suspend fun refreshUserInfo(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val response = RetrofitClient.userService.getUserInfo()
-            if (response.isSuccessful) {
-                val userId = response.body()?.id ?: 0
-                saveUserId(userId)
-
-                if (repository != null && userId > 0) {
-                    val email = getUserEmail()
-                    if (email.isNotEmpty()) {
-                        try {
-                            val existingUser = repository.getUserById(userId)
-                            if (existingUser == null) {
-                                val user = User(userId = userId, email = email, passwordHash = "")
-                                repository.insertUser(user)
-                                Log.d(TAG, "Użytkownik dodany do lokalnej bazy danych podczas odświeżania")
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Błąd podczas aktualizacji użytkownika w lokalnej bazie danych: ${e.message}", e)
+        if (!isTokenPresentInPrefs()) {
+            logout()
+            return@withContext false
+        }
+        val fetchedUserId = fetchAndSaveUserIdInternal()
+        if (fetchedUserId > 0) {
+            _isLoggedIn.value = true
+            if (repository != null) {
+                val email = getUserEmail()
+                if (email.isNotEmpty()) {
+                    try {
+                        val existingUser = repository.getUserById(fetchedUserId)
+                        if (existingUser == null) {
+                            val user = User(userId = fetchedUserId, email = email, passwordHash = "")
+                            repository.insertUser(user)
+                            Log.d(TAG, "Użytkownik dodany do lokalnej bazy danych podczas odświeżania")
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Błąd podczas aktualizacji użytkownika w lokalnej bazie danych: ${e.message}", e)
                     }
                 }
-                _isLoggedIn.value = true // Upewnij się, że stan jest aktualny
-                return@withContext true
-            } else {
-                // Jeśli odświeżenie informacji o użytkowniku nie powiedzie się z powodu tokenu
-                if (response.errorBody()?.string()?.contains("Token has expired") == true) {
-                    logout()
-                } else {
-                     _isLoggedIn.value = false // Jeśli inny błąd, ale nie możemy potwierdzić użytkownika
-                }
-                return@withContext false
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Błąd podczas odświeżania informacji o użytkowniku", e)
-            // Rozważ wylogowanie, jeśli wyjątek oznacza problem z autentykacją
-            // logout()
-             _isLoggedIn.value = false // Jeśli wyjątek, nie możemy potwierdzić użytkownika
+            return@withContext true
+        } else {
+            logout()
             return@withContext false
         }
     }

@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import com.example.leafme.ui.theme.LeafMeTheme
+import android.util.Log
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,17 +21,20 @@ class MainActivity : ComponentActivity() {
         setContent {
             LeafMeTheme {
                 val isLoggedIn by authManager.isLoggedInState.collectAsState()
-                val currentUserId = authManager.getUserId()
+                val userId by authManager.currentUserIdState.collectAsState()
 
-                val startDestination = if (isLoggedIn) {
+                Log.d("MainActivity", "Stan isLoggedIn: $isLoggedIn, Stan userId: $userId")
+
+                val startDestination = if (isLoggedIn && userId > 0) {
                     LeafMeDestinations.PlantList.name
                 } else {
                     LeafMeDestinations.LoginRegister.name
                 }
+                Log.d("MainActivity", "StartDestination: $startDestination")
 
                 LeafMeApp(
                     repository = repository,
-                    userId = currentUserId,
+                    userId = userId,
                     startDestination = startDestination,
                     authManager = authManager
                 )
