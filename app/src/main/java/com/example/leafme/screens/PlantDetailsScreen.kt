@@ -1,4 +1,3 @@
-
 package com.example.leafme.screens
 
 import androidx.compose.foundation.layout.*
@@ -9,87 +8,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.database.AppRepository
-import com.example.leafme.data.Measurement
-import com.example.leafme.data.Plant
-import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.math.roundToInt
-// Prosty wykres liniowy (tylko poglądowy, nie produkcyjny!)
-// Wymaga: implementation "androidx.compose.foundation:foundation:1.4.3"
-import androidx.compose.foundation.Canvas
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
+import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.abs
-
-
-fun sampleEvery5Minutes(measurements: List<Measurement>): List<Measurement> {
-    // Sortujemy po czasie
-    return measurements
-        .sortedBy { it.timeStamp }
-        .groupBy { it.timeStamp / 300 } // 300 sekund = 5 minut
-        .map { (_, group) ->
-            // Możesz wybrać .last(), .first() lub średnią z grupy
-            val avgMoisture = group.map { it.moisture }.average().toFloat()
-            val avgTemp = group.map { it.temperature }.average().toFloat()
-            val ts = group.last().timeStamp
-            Measurement(
-                id = 0,
-                plantId = group.last().plantId,
-                timeStamp = ts,
-                moisture = avgMoisture,
-                temperature = avgTemp
-            )
-        }
-}
-
-
 
 @Composable
 fun PlantDetailsScreen(
     plantId: Int,
     repository: AppRepository,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: PlantDetailsViewModel = viewModel { PlantDetailsViewModel(repository) }
 ) {
-    var plant by remember { mutableStateOf<Plant?>(null) }
-    var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-   // val coroutineScope = rememberCoroutineScope()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(plantId) {
-        isLoading = true
-        plant = repository.getPlantById(plantId)
-        measurements = repository.getMeasurementsForPlant(plantId)
-        isLoading = false
+        viewModel.loadPlantDetails(plantId)
     }
-
-    val lastMeasurement = measurements.firstOrNull()
-    val lastWatering = lastMeasurement?.let {
-        SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-            .format(Date(it.timeStamp.toLong() * 1000))
-    } ?: "Nigdy"
-
-    // Filtruj pomiary z ostatniej godziny
-    val now = System.currentTimeMillis() / 1000
-    val thirtyMinutesAgo = now - 1800 // 30 minut
-    val last30MinMeasurements = measurements.filter { it.timeStamp >= thirtyMinutesAgo }
-    val chartMeasurementsRaw = if (last30MinMeasurements.isNotEmpty()) last30MinMeasurements else measurements
-    val chartMeasurements = sampleEvery5Minutes(chartMeasurementsRaw)
-    val filtered = measurements
-        .filter { it.timeStamp >= thirtyMinutesAgo }
-        .groupBy { (it.timeStamp - thirtyMinutesAgo) / (5 * 60) } // grupuj co 5 minut
-        .map { (_, group) -> group.last() } // wybierz ostatni pomiar z każdej grupy
-
 
     Column(
         modifier = modifier
@@ -97,60 +38,61 @@ fun PlantDetailsScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (isLoading) {
+        if (uiState.isLoading) {
             CircularProgressIndicator()
-        } else if (plant == null) {
+        } else if (uiState.plant == null) {
             Text("Nie znaleziono rośliny.")
         } else {
-            Text(plant!!.name, style = MaterialTheme.typography.headlineMedium)
+            Text(uiState.plant!!.name, style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Ostatnie podlewanie: $lastWatering")
+            Text("Ostatnie podlewanie: ${uiState.lastWateringTime}")
             Spacer(modifier = Modifier.height(8.dp))
-            if (lastMeasurement != null) {
+
+            uiState.lastMeasurement?.let { lastMeasurement ->
                 Text("Wilgotność gleby: %.1f%%".format(lastMeasurement.moisture))
                 Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
-            } else {
+            } ?: run {
                 Text("Brak danych o wilgotności i temperaturze")
             }
+
             Spacer(modifier = Modifier.height(24.dp))
+
             Text(
-                if (last30MinMeasurements.isNotEmpty()) "Wilgotność (ostatnie 30 minut):"
+                if (uiState.isRecent) "Wilgotność (ostatnie 30 minut):"
                 else "Wilgotność (wszystkie pomiary):"
             )
             LineChart(
-                data = chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
+                data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp),
-                //color = MaterialTheme.colorScheme.primary,
-                yLabel = "[%]",
-                //xLabel = "Czas"
+                yLabel = "[%]"
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                if (last30MinMeasurements.isNotEmpty()) "Temperatura (ostatnie 30 minut):"
+                if (uiState.isRecent) "Temperatura (ostatnie 30 minut):"
                 else "Temperatura (wszystkie pomiary):"
             )
             LineChart(
-                data = chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
+                data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp),
-                //color = MaterialTheme.colorScheme.tertiary,
-                yLabel = "[°C]",
-                //xLabel = "Czas"
+                yLabel = "[°C]"
             )
 
+            uiState.errorMessage?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
         }
     }
 }
-
-
-
-
-
 
 @Composable
 fun LineChart(

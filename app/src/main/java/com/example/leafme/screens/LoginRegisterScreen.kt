@@ -12,26 +12,19 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.auth.AuthManager
 import android.util.Log
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun LoginRegisterScreen(
     navController: NavController,
     onLoginSuccess: () -> Unit,
     authManager: AuthManager,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: LoginRegisterViewModel = viewModel { LoginRegisterViewModel(authManager) }
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isLoginMode by remember { mutableStateOf(true) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
-
-    fun clearFields() {
-        email = ""
-        password = ""
-        message = null
-    }
 
     Column(
         modifier = modifier
@@ -41,22 +34,22 @@ fun LoginRegisterScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = if (isLoginMode) "Logowanie" else "Rejestracja",
+            text = if (uiState.isLoginMode) "Logowanie" else "Rejestracja",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
         OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
+            value = uiState.email,
+            onValueChange = { viewModel.updateEmail(it) },
             label = { Text("Email") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
+            value = uiState.password,
+            onValueChange = { viewModel.updatePassword(it) },
             label = { Text("Hasło") },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
@@ -64,50 +57,23 @@ fun LoginRegisterScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        message?.let {
+        uiState.message?.let {
             Text(it, color = if (it.startsWith("Błąd")) MaterialTheme.colorScheme.error else LocalContentColor.current)
             Spacer(modifier = Modifier.height(8.dp))
         }
 
         Button(
-            onClick = {
-                isLoading = true
-                message = null
-                coroutineScope.launch {
-                    if (isLoginMode) {
-                        val (success, msg, loggedInUserId) = authManager.login(email, password)
-                        isLoading = false
-                        if (success && loggedInUserId > 0) {
-                            Log.d("LoginRegisterScreen", "Logowanie udane, userId: $loggedInUserId")
-                            onLoginSuccess()
-                        } else {
-                            message = msg
-                            Log.e("LoginRegisterScreen", "Błąd logowania: $msg")
-                        }
-                    } else {
-                        val (success, msg) = authManager.register(email, password)
-                        isLoading = false
-                        message = msg
-                        if (success) {
-                            isLoginMode = true
-                            clearFields()
-                        }
-                    }
-                }
-            },
-            enabled = !isLoading,
+            onClick = { viewModel.submit() },
+            enabled = !uiState.isLoading,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (isLoginMode) "Zaloguj się" else "Zarejestruj się")
+            Text(if (uiState.isLoginMode) "Zaloguj się" else "Zarejestruj się")
         }
 
         TextButton(
-            onClick = {
-                isLoginMode = !isLoginMode
-                clearFields()
-            }
+            onClick = { viewModel.toggleMode() }
         ) {
-            Text(if (isLoginMode) "Nie masz konta? Zarejestruj się" else "Masz już konto? Zaloguj się")
+            Text(if (uiState.isLoginMode) "Nie masz konta? Zarejestruj się" else "Masz już konto? Zaloguj się")
         }
     }
 }
