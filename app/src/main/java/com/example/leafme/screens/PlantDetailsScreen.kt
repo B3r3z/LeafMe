@@ -15,80 +15,213 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.sp
+import com.example.leafme.data.Measurement
+import com.example.leafme.data.Plant
 import java.text.SimpleDateFormat
 import java.util.*
 
+
+private val timeRanges = listOf(15, 30, 60, 120) // minuty
 @Composable
 fun PlantDetailsScreen(
     plantId: Int,
     repository: AppRepository,
     navController: NavController,
     modifier: Modifier = Modifier,
-    viewModel: PlantDetailsViewModel = viewModel { PlantDetailsViewModel(repository) }
+    viewModel: PlantDetailsViewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return PlantDetailsViewModel(repository) as T
+        }
+    })
 ) {
+    var selectedRange by remember { mutableStateOf(30) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(plantId) {
-        viewModel.loadPlantDetails(plantId)
+
+    LaunchedEffect(plantId, selectedRange) {
+        viewModel.loadPlantDetails(plantId, selectedRange)
     }
+
+    val plant = uiState.plant
+    val lastMeasurement = uiState.lastMeasurement
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (uiState.isLoading) {
+            Spacer(modifier = Modifier.height(64.dp))
             CircularProgressIndicator()
-        } else if (uiState.plant == null) {
-            Text("Nie znaleziono rośliny.")
+        } else if (plant == null) {
+            Text("Nie znaleziono rośliny.", style = MaterialTheme.typography.titleMedium)
         } else {
-            Text(uiState.plant!!.name, style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Ostatnie podlewanie: ${uiState.lastWateringTime}")
-            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                plant.name,
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
 
-            uiState.lastMeasurement?.let { lastMeasurement ->
-                Text("Wilgotność gleby: %.1f%%".format(lastMeasurement.moisture))
-                Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
-            } ?: run {
-                Text("Brak danych o wilgotności i temperaturze")
+            // Karta z ostatnim podlewaniem
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🪴", fontSize = 28.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Ostatnie podlewanie",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = uiState.lastWateringTime,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                if (uiState.isRecent) "Wilgotność (ostatnie 30 minut):"
-                else "Wilgotność (wszystkie pomiary):"
-            )
-            LineChart(
-                data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
+            // Dwa kwadraty z danymi
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp),
-                yLabel = "[%]"
-            )
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Wilgotność
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    elevation = CardDefaults.cardElevation(6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("💧", fontSize = 32.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (lastMeasurement != null) {
+                            Text(
+                                "%.1f%%".format(lastMeasurement.moisture),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            Text("Wilgotność", style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text("--", style = MaterialTheme.typography.headlineMedium)
+                            Text("Wilgotność", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                // Temperatura
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    elevation = CardDefaults.cardElevation(6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🌡️", fontSize = 32.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (lastMeasurement != null) {
+                            Text(
+                                "%.1f°C".format(lastMeasurement.temperature),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            Text("Temperatura", style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text("--", style = MaterialTheme.typography.headlineMedium)
+                            Text("Temperatura", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+            // Chipy wyboru zakresu czasu (wstaw przed wykresami)
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 8.dp)
+            ) {
+                timeRanges.forEach { minutes ->
+                    AssistChip(
+                        onClick = { selectedRange = minutes },
+                        label = { Text("$minutes min") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = if (selectedRange == minutes) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = if (selectedRange == minutes) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                if (uiState.isRecent) "Temperatura (ostatnie 30 minut):"
-                else "Temperatura (wszystkie pomiary):"
-            )
-            LineChart(
-                data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
+            // Wykres wilgotności
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp),
-                yLabel = "[°C]"
-            )
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Wilgotność (ostatnie 30 minut):", style = MaterialTheme.typography.titleMedium)
+                    LineChart(
+                        data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        yLabel = "[%]",
+                    )
+                }
+            }
 
-            uiState.errorMessage?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+            // Wykres temperatury
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Temperatura (ostatnie 30 minut):", style = MaterialTheme.typography.titleMedium)
+                    LineChart(
+                        data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        yLabel = "[°C]",
+                    )
+                }
             }
         }
     }

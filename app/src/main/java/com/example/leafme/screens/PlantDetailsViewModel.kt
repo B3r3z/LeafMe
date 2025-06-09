@@ -29,7 +29,7 @@ class PlantDetailsViewModel(
     /**
      * Ładuje dane rośliny i jej pomiary
      */
-    fun loadPlantDetails(plantId: Int) {
+    fun loadPlantDetails(plantId: Int, rangeMinutes: Int = 15) {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
 
         viewModelScope.launch {
@@ -37,23 +37,16 @@ class PlantDetailsViewModel(
                 val plant = repository.getPlantById(plantId)
                 val measurements = repository.syncMeasurementsWithServer(plantId)
 
-                val sampledMeasurements = sampleEvery5Minutes(measurements)
+                val now = System.currentTimeMillis() / 1000
+                val fromTimestamp = now - (rangeMinutes * 60)
+                val filtered = measurements.filter { it.timeStamp >= fromTimestamp }
+                val chartMeasurementsRaw = if (filtered.isNotEmpty()) filtered else measurements
+                val chartMeasurements = sampleEvery5Minutes(chartMeasurementsRaw)
                 val lastMeasurement = measurements.firstOrNull()
-
                 val lastWateringTime = lastMeasurement?.let {
                     SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
                         .format(Date(it.timeStamp.toLong() * 1000))
                 } ?: "Nigdy"
-
-                // Filtruj pomiary z ostatnich 30 minut
-                val now = System.currentTimeMillis() / 1000
-                val thirtyMinutesAgo = now - 1800 // 30 minut
-                val last30MinMeasurements = measurements.filter { it.timeStamp >= thirtyMinutesAgo }
-
-                // Użyj danych z ostatnich 30 minut, jeśli są dostępne, w przeciwnym razie wszystkie
-                val chartMeasurementsRaw = if (last30MinMeasurements.isNotEmpty())
-                    last30MinMeasurements else measurements
-                val chartMeasurements = sampleEvery5Minutes(chartMeasurementsRaw)
 
                 _uiState.value = _uiState.value.copy(
                     plant = plant,
@@ -61,7 +54,6 @@ class PlantDetailsViewModel(
                     chartMeasurements = chartMeasurements,
                     lastWateringTime = lastWateringTime,
                     lastMeasurement = lastMeasurement,
-                    isRecent = last30MinMeasurements.isNotEmpty(),
                     isLoading = false
                 )
             } catch (e: TokenExpiredException) {
