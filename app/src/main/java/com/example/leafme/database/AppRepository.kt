@@ -159,7 +159,7 @@ class AppRepository(
     }
 
     /**
-     * Synchronizuje rośliny z serwerem
+     * Synchronizuje rośliny z serwerem, traktując serwer jako główne źródło prawdy
      * @param userId ID użytkownika, którego rośliny mają zostać zsynchronizowane
      * @return Lista roślin po synchronizacji
      */
@@ -185,22 +185,20 @@ class AppRepository(
                     plants
                 }
 
-                // Identyfikatory roślin na serwerze
+                // Identyfikatory roślin na serwerze i lokalnie
                 val serverPlantIds = serverPlants.map { it.id }.toSet()
-
-                // Identyfikatory roślin lokalnie
                 val localPlantIds = localPlants.map { it.id }.toSet()
 
-                // Rośliny, które są na serwerze, ale nie ma ich lokalnie - dodaj lokalnie
+                // 1. Dodaj lokalnie rośliny, które są na serwerze, a nie ma ich lokalnie
                 val plantsToAddLocally = serverPlants.filter { it.id !in localPlantIds }
                 Log.d("AppRepository", "Liczba roślin do dodania lokalnie: ${plantsToAddLocally.size}")
 
-                // Rośliny, które są lokalnie, ale nie ma ich na serwerze - dodaj na serwer
-                val plantsToAddToServer = localPlants.filter { it.id !in serverPlantIds }
-                Log.d("AppRepository", "Liczba roślin do dodania na serwer: ${plantsToAddToServer.size}")
+                // 2. Usuń lokalnie rośliny, których nie ma już na serwerze
+                val plantsToRemoveLocally = localPlants.filter { it.id !in serverPlantIds }
+                Log.d("AppRepository", "Liczba roślin do usunięcia lokalnie: ${plantsToRemoveLocally.size}")
 
-                // Dodaj rośliny do lokalnej bazy danych
                 withContext(Dispatchers.IO) {
+                    // Dodaj brakujące rośliny lokalnie
                     for (apiPlant in plantsToAddLocally) {
                         try {
                             // Konwertuj z formatu API do formatu bazy danych
@@ -211,25 +209,15 @@ class AppRepository(
                             Log.e("AppRepository", "Błąd podczas dodawania rośliny lokalnie: ${e.message}")
                         }
                     }
-                }
 
-                // Dodaj rośliny na serwer
-                for (plant in plantsToAddToServer) {
-                    try {
-                        val createRequest = CreatePlantRequest(
-                            name = plant.name,
-                            plantId = plant.id
-                            // Usuwam userId, gdyż serwer i tak pobiera go z tokenu JWT
-                        )
-                        val createResponse = RetrofitClient.plantService.createPlant(createRequest)
-
-                        if (!createResponse.isSuccessful) {
-                            Log.e("AppRepository", "Błąd podczas dodawania rośliny na serwer: ${createResponse.errorBody()?.string()}")
-                        } else {
-                            Log.d("AppRepository", "Roślina dodana na serwer: ${plant.name}")
+                    // Usuń lokalnie rośliny, których nie ma na serwerze
+                    for (plantToRemove in plantsToRemoveLocally) {
+                        try {
+                            Log.d("AppRepository", "Usuwanie rośliny lokalnie: id=${plantToRemove.id}, name=${plantToRemove.name}")
+                            plantDao.deletePlant(plantToRemove.id)
+                        } catch (e: Exception) {
+                            Log.e("AppRepository", "Błąd podczas usuwania rośliny lokalnie: ${e.message}")
                         }
-                    } catch (e: Exception) {
-                        Log.e("AppRepository", "Wyjątek podczas dodawania rośliny na serwer: ${e.message}")
                     }
                 }
 

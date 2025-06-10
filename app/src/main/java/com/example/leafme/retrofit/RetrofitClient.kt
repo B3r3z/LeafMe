@@ -31,7 +31,7 @@ class AuthInterceptor(private var token: String = "") : Interceptor {
 
 object RetrofitClient {
     // Base URL dla API
-    private const val BASE_URL = "http://10.160.35.80:8000"  // Zmień na właściwy adres serwera
+    private const val BASE_URL = "http://192.168.1.20:8000"  // Zmień na właściwy adres serwera
 
     // Instancja AuthInterceptor do zarządzania tokenem JWT
     private val authInterceptor = AuthInterceptor()
