@@ -25,21 +25,55 @@ import com.example.leafme.database.AppRepository
 import com.example.leafme.domain.AddPlantUseCase
 import kotlinx.coroutines.launch
 import android.util.Log
+import com.example.leafme.auth.AuthManager
+import com.example.leafme.util.TokenExpiredException
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 
 @Composable
 fun AddPlantScreen(
     navController: NavController,
     repository: AppRepository,
     userId: Int,
+    authManager: AuthManager,
     modifier: Modifier = Modifier
 ) {
     var plantName by remember { mutableStateOf("") }
     var isNameError by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository)) }
+    val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository, authManager)) }
     var plantIdText by remember { mutableStateOf("") }
     var isPlantIdError by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Obserwuj stan ładowania z ViewModel zamiast lokalnego stanu
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    // Obserwuj stan błędu z ViewModel
+    val error by viewModel.errorState.collectAsState()
+
+    // Reaguj na zmiany stanu błędu
+    LaunchedEffect(error) {
+        error?.let { exception ->
+            when (exception) {
+                is TokenExpiredException -> {
+                    Log.e("AddPlantScreen", "Token wygasł podczas dodawania rośliny.", exception)
+                    authManager.logout()
+                    errorMessage = "Sesja wygasła. Zaloguj się ponownie."
+                }
+                else -> {
+                    Log.e("AddPlantScreen", "Błąd podczas dodawania rośliny: ${exception.message}", exception)
+                    // Sprawdź, czy błąd dotyczy duplikatu ID
+                    if (exception.message?.contains("już istnieje na serwerze") == true) {
+                        isPlantIdError = true
+                        errorMessage = exception.message
+                    } else {
+                        errorMessage = "Błąd dodawania rośliny: ${exception.message}"
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -58,7 +92,7 @@ fun AddPlantScreen(
             value = plantName,
             onValueChange = { newValue ->
                 plantName = newValue
-                isNameError = false // Resetuj błąd przy każdej zmianie
+                isNameError = false
             },
             label = { Text(stringResource(R.string.plant_name_label)) },
             isError = isNameError,
@@ -80,6 +114,7 @@ fun AddPlantScreen(
             onValueChange = { newValue ->
                 plantIdText = newValue
                 isPlantIdError = false
+                viewModel.clearError() // Wyczyść błąd przy zmianie tekstu
             },
             label = { Text("ID rośliny (opcjonalnie)") },
             isError = isPlantIdError,
@@ -95,39 +130,31 @@ fun AddPlantScreen(
                     return@Button
                 }
 
-                isLoading = true
+                errorMessage = null
                 Log.d("AddPlantScreen", "Dodawanie rośliny: $plantName, userId: $userId")
 
                 val plantId = plantIdText.toIntOrNull()
                 if (plantIdText.isNotBlank() && plantId == null) {
                     isPlantIdError = true
-                    isLoading = false // Dodano resetowanie isLoading
+                    errorMessage = "Nieprawidłowe ID rośliny."
                     return@Button
                 }
-                coroutineScope.launch {
-                    try {
-                        // Dodaj roślinę lokalnie i na serwerze
-                        viewModel.addPlant(plantName, userId, plantId) {
-                            // To jest callback po sukcesie
-                            coroutineScope.launch {
-                                try {
-                                    // Synchronizuj z serwerem
-                                    Log.d("AddPlantScreen", "Rozpoczynam synchronizację roślin")
-                                    val plants = repository.syncPlantsWithServer(userId)
-                                    Log.d("AddPlantScreen", "Synchronizacja zakończona, liczba roślin: ${plants.size}")
 
-                                    // Powrót do poprzedniego ekranu
-                                    navController.popBackStack()
-                                } catch (e: Exception) {
-                                    Log.e("AddPlantScreen", "Błąd podczas synchronizacji: ${e.message}", e)
-                                } finally {
-                                    isLoading = false // Zapewnia zresetowanie isLoading
-                                }
-                            }
+                viewModel.addPlant(plantName, userId, plantId) {
+                    coroutineScope.launch {
+                        try {
+                            Log.d("AddPlantScreen", "Rozpoczynam synchronizację roślin po dodaniu")
+                            repository.syncPlantsWithServer(userId)
+                            Log.d("AddPlantScreen", "Synchronizacja zakończona")
+                            navController.popBackStack()
+                        } catch (e: TokenExpiredException) {
+                            Log.e("AddPlantScreen", "Token wygasł podczas synchronizacji po dodaniu.", e)
+                            authManager.logout()
+                            errorMessage = "Sesja wygasła. Zaloguj się ponownie."
+                        } catch (e: Exception) {
+                            Log.e("AddPlantScreen", "Błąd podczas synchronizacji po dodaniu: ${e.message}", e)
+                            errorMessage = "Błąd synchronizacji: ${e.message}"
                         }
-                    } catch (e: Exception) {
-                        Log.e("AddPlantScreen", "Błąd podczas dodawania rośliny: ${e.message}", e)
-                        isLoading = false
                     }
                 }
             },
@@ -140,6 +167,14 @@ fun AddPlantScreen(
             Text(
                 text = "Dodawanie rośliny...",
                 modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+
+        errorMessage?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
     }

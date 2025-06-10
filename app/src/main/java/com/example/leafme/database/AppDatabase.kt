@@ -8,7 +8,7 @@ import com.example.leafme.data.User
 import com.example.leafme.data.Plant
 import com.example.leafme.data.Measurement
 
-@Database(entities = [User::class, Plant::class, Measurement::class], version = 2, exportSchema = false)
+@Database(entities = [User::class, Plant::class, Measurement::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun plantDao(): PlantDao
@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    //.fallbackToDestructiveMigration() // Odkomentuj, jeśli chcesz, aby baza danych była czyszczona przy zmianie schematu
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
@@ -35,3 +35,4 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
+

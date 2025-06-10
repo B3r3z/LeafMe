@@ -4,44 +4,34 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.leafme.auth.AuthManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import com.example.leafme.ui.theme.LeafMeTheme
-import kotlinx.coroutines.launch
+import android.util.Log
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val app = application as LeafMeApplication
+        val repository = app.repository
+        val authManager = app.authManager
+
         setContent {
             LeafMeTheme {
-                val repository = (application as LeafMeApplication).repository
-                val context = this
-                val authManager = remember { AuthManager(context, repository) }
-                // Inicjalizacja tokenu przy starcie
-                authManager.initializeToken()
-                var userId = authManager.getUserId()
+                val isLoggedIn by authManager.isLoggedInState.collectAsState()
+                val userId by authManager.currentUserIdState.collectAsState()
 
-                // Użyj LaunchedEffect do wywołania suspendowanych funkcji
-                androidx.compose.runtime.LaunchedEffect(authManager.isLoggedIn()) {
-                    if (authManager.isLoggedIn() && userId == 0) {
-                        authManager.refreshUserInfo()
-                    } else if (authManager.isLoggedIn() && userId > 0) {
-                        authManager.refreshUserInfo()
-                    }
-                }
+                Log.d("MainActivity", "Stan isLoggedIn: $isLoggedIn, Stan userId: $userId")
 
-                // Pobierz userId po ewentualnym odświeżeniu
-                userId = authManager.getUserId()
-                val startDestination = if (authManager.isLoggedIn()) {
+                val startDestination = if (isLoggedIn && userId > 0) {
                     LeafMeDestinations.PlantList.name
                 } else {
                     LeafMeDestinations.LoginRegister.name
                 }
+                Log.d("MainActivity", "StartDestination: $startDestination")
+
                 LeafMeApp(
                     repository = repository,
                     userId = userId,

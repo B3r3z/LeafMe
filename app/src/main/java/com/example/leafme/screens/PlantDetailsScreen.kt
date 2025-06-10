@@ -1,4 +1,3 @@
-
 package com.example.leafme.screens
 
 import androidx.compose.foundation.layout.*
@@ -9,148 +8,224 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.leafme.database.AppRepository
-import com.example.leafme.data.Measurement
-import com.example.leafme.data.Plant
-import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.math.roundToInt
-// Prosty wykres liniowy (tylko poglądowy, nie produkcyjny!)
-// Wymaga: implementation "androidx.compose.foundation:foundation:1.4.3"
-import androidx.compose.foundation.Canvas
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.sp
+import com.example.leafme.data.Measurement
+import com.example.leafme.data.Plant
+import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.abs
 
 
-fun sampleEvery5Minutes(measurements: List<Measurement>): List<Measurement> {
-    // Sortujemy po czasie
-    return measurements
-        .sortedBy { it.timeStamp }
-        .groupBy { it.timeStamp / 300 } // 300 sekund = 5 minut
-        .map { (_, group) ->
-            // Możesz wybrać .last(), .first() lub średnią z grupy
-            val avgMoisture = group.map { it.moisture }.average().toFloat()
-            val avgTemp = group.map { it.temperature }.average().toFloat()
-            val ts = group.last().timeStamp
-            Measurement(
-                id = 0,
-                plantId = group.last().plantId,
-                timeStamp = ts,
-                moisture = avgMoisture,
-                temperature = avgTemp
-            )
-        }
-}
-
-
-
+private val timeRanges = listOf(15, 30, 60, 120) // minuty
 @Composable
 fun PlantDetailsScreen(
     plantId: Int,
     repository: AppRepository,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: PlantDetailsViewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return PlantDetailsViewModel(repository) as T
+        }
+    })
 ) {
-    var plant by remember { mutableStateOf<Plant?>(null) }
-    var measurements by remember { mutableStateOf<List<Measurement>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-   // val coroutineScope = rememberCoroutineScope()
+    var selectedRange by remember { mutableStateOf(30) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(plantId) {
-        isLoading = true
-        plant = repository.getPlantById(plantId)
-        measurements = repository.getMeasurementsForPlant(plantId)
-        isLoading = false
+
+    LaunchedEffect(plantId, selectedRange) {
+        viewModel.loadPlantDetails(plantId, selectedRange)
     }
 
-    val lastMeasurement = measurements.firstOrNull()
-    val lastWatering = lastMeasurement?.let {
-        SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-            .format(Date(it.timeStamp.toLong() * 1000))
-    } ?: "Nigdy"
-
-    // Filtruj pomiary z ostatniej godziny
-    val now = System.currentTimeMillis() / 1000
-    val thirtyMinutesAgo = now - 1800 // 30 minut
-    val last30MinMeasurements = measurements.filter { it.timeStamp >= thirtyMinutesAgo }
-    val chartMeasurementsRaw = if (last30MinMeasurements.isNotEmpty()) last30MinMeasurements else measurements
-    val chartMeasurements = sampleEvery5Minutes(chartMeasurementsRaw)
-    val filtered = measurements
-        .filter { it.timeStamp >= thirtyMinutesAgo }
-        .groupBy { (it.timeStamp - thirtyMinutesAgo) / (5 * 60) } // grupuj co 5 minut
-        .map { (_, group) -> group.last() } // wybierz ostatni pomiar z każdej grupy
-
+    val plant = uiState.plant
+    val lastMeasurement = uiState.lastMeasurement
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (isLoading) {
+        if (uiState.isLoading) {
+            Spacer(modifier = Modifier.height(64.dp))
             CircularProgressIndicator()
         } else if (plant == null) {
-            Text("Nie znaleziono rośliny.")
+            Text("Nie znaleziono rośliny.", style = MaterialTheme.typography.titleMedium)
         } else {
-            Text(plant!!.name, style = MaterialTheme.typography.headlineMedium)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Ostatnie podlewanie: $lastWatering")
-            Spacer(modifier = Modifier.height(8.dp))
-            if (lastMeasurement != null) {
-                Text("Wilgotność gleby: %.1f%%".format(lastMeasurement.moisture))
-                Text("Temperatura: %.1f°C".format(lastMeasurement.temperature))
-            } else {
-                Text("Brak danych o wilgotności i temperaturze")
+            Text(
+                plant.name,
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // Karta z ostatnim podlewaniem
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🪴", fontSize = 28.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Ostatnie podlewanie",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = uiState.lastWateringTime,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                if (last30MinMeasurements.isNotEmpty()) "Wilgotność (ostatnie 30 minut):"
-                else "Wilgotność (wszystkie pomiary):"
-            )
-            LineChart(
-                data = chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
+
+            // Dwa kwadraty z danymi
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp),
-                //color = MaterialTheme.colorScheme.primary,
-                yLabel = "[%]",
-                //xLabel = "Czas"
-            )
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Wilgotność
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    elevation = CardDefaults.cardElevation(6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("💧", fontSize = 32.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (lastMeasurement != null) {
+                            Text(
+                                "%.1f%%".format(lastMeasurement.moisture),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            Text("Wilgotność", style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text("--", style = MaterialTheme.typography.headlineMedium)
+                            Text("Wilgotność", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                // Temperatura
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    elevation = CardDefaults.cardElevation(6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🌡️", fontSize = 32.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (lastMeasurement != null) {
+                            Text(
+                                "%.1f°C".format(lastMeasurement.temperature),
+                                style = MaterialTheme.typography.headlineMedium
+                            )
+                            Text("Temperatura", style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text("--", style = MaterialTheme.typography.headlineMedium)
+                            Text("Temperatura", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+            // Chipy wyboru zakresu czasu (wstaw przed wykresami)
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 8.dp)
+            ) {
+                timeRanges.forEach { minutes ->
+                    AssistChip(
+                        onClick = { selectedRange = minutes },
+                        label = { Text("$minutes min") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = if (selectedRange == minutes) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = if (selectedRange == minutes) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                if (last30MinMeasurements.isNotEmpty()) "Temperatura (ostatnie 30 minut):"
-                else "Temperatura (wszystkie pomiary):"
-            )
-            LineChart(
-                data = chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
+            // Wykres wilgotności
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp),
-                //color = MaterialTheme.colorScheme.tertiary,
-                yLabel = "[°C]",
-                //xLabel = "Czas"
-            )
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Wilgotność (ostatnie 30 minut):", style = MaterialTheme.typography.titleMedium)
+                    LineChart(
+                        data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.moisture },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        yLabel = "[%]",
+                    )
+                }
+            }
 
+            // Wykres temperatury
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Temperatura (ostatnie 30 minut):", style = MaterialTheme.typography.titleMedium)
+                    LineChart(
+                        data = uiState.chartMeasurements.map { it.timeStamp.toLong() to it.temperature },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        yLabel = "[°C]",
+                    )
+                }
+            }
         }
     }
 }
-
-
-
-
-
 
 @Composable
 fun LineChart(
