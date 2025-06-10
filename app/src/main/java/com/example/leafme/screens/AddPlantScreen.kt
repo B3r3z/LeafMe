@@ -27,7 +27,8 @@ import kotlinx.coroutines.launch
 import android.util.Log
 import com.example.leafme.auth.AuthManager
 import com.example.leafme.util.TokenExpiredException
-import com.example.leafme.LeafMeDestinations
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 
 @Composable
 fun AddPlantScreen(
@@ -43,8 +44,36 @@ fun AddPlantScreen(
     val viewModel = remember { AddPlantViewModel(AddPlantUseCase(repository, authManager)) }
     var plantIdText by remember { mutableStateOf("") }
     var isPlantIdError by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Obserwuj stan ładowania z ViewModel zamiast lokalnego stanu
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    // Obserwuj stan błędu z ViewModel
+    val error by viewModel.errorState.collectAsState()
+
+    // Reaguj na zmiany stanu błędu
+    LaunchedEffect(error) {
+        error?.let { exception ->
+            when (exception) {
+                is TokenExpiredException -> {
+                    Log.e("AddPlantScreen", "Token wygasł podczas dodawania rośliny.", exception)
+                    authManager.logout()
+                    errorMessage = "Sesja wygasła. Zaloguj się ponownie."
+                }
+                else -> {
+                    Log.e("AddPlantScreen", "Błąd podczas dodawania rośliny: ${exception.message}", exception)
+                    // Sprawdź, czy błąd dotyczy duplikatu ID
+                    if (exception.message?.contains("już istnieje na serwerze") == true) {
+                        isPlantIdError = true
+                        errorMessage = exception.message
+                    } else {
+                        errorMessage = "Błąd dodawania rośliny: ${exception.message}"
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -85,6 +114,7 @@ fun AddPlantScreen(
             onValueChange = { newValue ->
                 plantIdText = newValue
                 isPlantIdError = false
+                viewModel.clearError() // Wyczyść błąd przy zmianie tekstu
             },
             label = { Text("ID rośliny (opcjonalnie)") },
             isError = isPlantIdError,
@@ -100,47 +130,31 @@ fun AddPlantScreen(
                     return@Button
                 }
 
-                isLoading = true
                 errorMessage = null
                 Log.d("AddPlantScreen", "Dodawanie rośliny: $plantName, userId: $userId")
 
                 val plantId = plantIdText.toIntOrNull()
                 if (plantIdText.isNotBlank() && plantId == null) {
                     isPlantIdError = true
-                    isLoading = false
                     errorMessage = "Nieprawidłowe ID rośliny."
                     return@Button
                 }
-                coroutineScope.launch {
-                    try {
-                        viewModel.addPlant(plantName, userId, plantId) {
-                            coroutineScope.launch {
-                                try {
-                                    Log.d("AddPlantScreen", "Rozpoczynam synchronizację roślin po dodaniu")
-                                    repository.syncPlantsWithServer(userId)
-                                    Log.d("AddPlantScreen", "Synchronizacja zakończona")
-                                    navController.popBackStack()
-                                } catch (e: TokenExpiredException) {
-                                    Log.e("AddPlantScreen", "Token wygasł podczas synchronizacji po dodaniu.", e)
-                                    authManager.logout() // To zainicjuje globalne przekierowanie
-                                    errorMessage = "Sesja wygasła. Zaloguj się ponownie."
-                                } catch (e: Exception) {
-                                    Log.e("AddPlantScreen", "Błąd podczas synchronizacji po dodaniu: ${e.message}", e)
-                                    errorMessage = "Błąd synchronizacji: ${e.message}"
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
+
+                viewModel.addPlant(plantName, userId, plantId) {
+                    coroutineScope.launch {
+                        try {
+                            Log.d("AddPlantScreen", "Rozpoczynam synchronizację roślin po dodaniu")
+                            repository.syncPlantsWithServer(userId)
+                            Log.d("AddPlantScreen", "Synchronizacja zakończona")
+                            navController.popBackStack()
+                        } catch (e: TokenExpiredException) {
+                            Log.e("AddPlantScreen", "Token wygasł podczas synchronizacji po dodaniu.", e)
+                            authManager.logout()
+                            errorMessage = "Sesja wygasła. Zaloguj się ponownie."
+                        } catch (e: Exception) {
+                            Log.e("AddPlantScreen", "Błąd podczas synchronizacji po dodaniu: ${e.message}", e)
+                            errorMessage = "Błąd synchronizacji: ${e.message}"
                         }
-                    } catch (e: TokenExpiredException) {
-                        Log.e("AddPlantScreen", "Token wygasł podczas dodawania rośliny.", e)
-                        authManager.logout() // To zainicjuje globalne przekierowanie
-                        errorMessage = "Sesja wygasła. Zaloguj się ponownie."
-                        isLoading = false
-                    } catch (e: Exception) {
-                        Log.e("AddPlantScreen", "Błąd podczas dodawania rośliny: ${e.message}", e)
-                        errorMessage = "Błąd dodawania rośliny: ${e.message}"
-                        isLoading = false
                     }
                 }
             },
